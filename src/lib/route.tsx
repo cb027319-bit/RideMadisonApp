@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { useData } from './data';
+import { profileFor, usePrefs } from './prefs';
 import { simplify, type LonLat } from './geo';
 import { fetchRoute, reverseLabel, type LatLon, type RouteProfile, type RouteResult } from './routing';
 
@@ -42,6 +43,9 @@ interface RouteState {
   savedRides: SavedRide[];
   /** Bumped whenever a stop is added from outside the Route tab. */
   focusRequest: number;
+  /** Bumped when another screen's "Where to?" bar wants the search box focused. */
+  searchRequest: number;
+  requestSearch: () => void;
   addStop: (p: LatLon, label?: string) => void;
   routeTo: (p: LatLon, label: string) => void;
   moveStop: (id: string, p: LatLon) => void;
@@ -64,9 +68,14 @@ const newId = () => `s${Date.now().toString(36)}${nextId++}`;
 
 export function RouteProvider({ children }: { children: ReactNode }) {
   const { location } = useData();
+  const { prefs } = usePrefs();
   const [stops, setStops] = useState<Stop[]>([]);
   const [startFromMe, setStartFromMe] = useState(true);
-  const [profile, setProfile] = useState<RouteProfile>('quiet');
+  // Default comes from onboarding ("how comfortable in traffic"); a choice made
+  // in the planner overrides it.
+  const [profileChoice, setProfile] = useState<RouteProfile | null>(null);
+  const profile: RouteProfile = profileChoice ?? (prefs ? profileFor(prefs.comfort) : 'quiet');
+  const [searchRequest, setSearchRequest] = useState(0);
   const [roundTrip, setRoundTrip] = useState(false);
   const [result, setResult] = useState<RouteResult | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -229,15 +238,16 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   );
 
   const retry = useCallback(() => setRetryCount((n) => n + 1), []);
+  const requestSearch = useCallback(() => setSearchRequest((n) => n + 1), []);
 
   const value = useMemo<RouteState>(
     () => ({
       stops, startFromMe, usingMyLocation, profile, roundTrip, result, status, error, waypoints, savedRides,
-      focusRequest, addStop, routeTo, moveStop, removeStop, shiftStop, setStartFromMe, setProfile, setRoundTrip,
+      focusRequest, searchRequest, requestSearch, addStop, routeTo, moveStop, removeStop, shiftStop, setStartFromMe, setProfile, setRoundTrip,
       clear, retry, saveRide, loadRide, deleteRide,
     }),
     [stops, startFromMe, usingMyLocation, profile, roundTrip, result, status, error, waypoints, savedRides,
-      focusRequest, addStop, routeTo, moveStop, removeStop, shiftStop, clear, retry, saveRide, loadRide, deleteRide],
+      focusRequest, searchRequest, requestSearch, addStop, routeTo, moveStop, removeStop, shiftStop, clear, retry, saveRide, loadRide, deleteRide],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

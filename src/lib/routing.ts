@@ -5,6 +5,7 @@
 // launch, routing moves to our own BRouter instance (same API) — see README.
 
 import { COVERAGE_BBOX, MADISON_CENTER, USER_AGENT } from './config';
+import { UNPAVED } from './osm';
 
 export interface LatLon {
   latitude: number;
@@ -19,12 +20,22 @@ export const PROFILE_META: Record<RouteProfile, { label: string; brouter: string
   fast: { label: 'Fastest', brouter: 'fastbike', hint: 'Most direct, may use busier roads' },
 };
 
+export interface RouteBreakdown {
+  /** Shares of distance, 0..1. path + lane + quiet + road = 1 */
+  path: number;
+  lane: number;
+  quiet: number;
+  road: number;
+  unpaved: number;
+}
+
 export interface RouteResult {
   coords: LatLon[];
   elevations: (number | null)[];
   distanceM: number;
   climbM: number;
   timeS: number;
+  breakdown?: RouteBreakdown;
 }
 
 // ---------- BRouter ----------
@@ -38,12 +49,61 @@ export function brouterUrl(points: LatLon[], profile: RouteProfile): string {
 
 interface BRouterGeoJSON {
   features?: {
-    properties?: Record<string, string | number | undefined>;
+    properties?: Record<string, string | number | string[][] | undefined>;
     geometry?: { type: string; coordinates: number[][] };
   }[];
 }
 
-const num = (v: string | number | undefined) => (v == null ? 0 : Number(v) || 0);
+const num = (v: unknown) => (v == null ? 0 : Number(v) || 0);
+
+const QUIET = new Set(['residential', 'living_street', 'service', 'unclassified', 'pedestrian']);
+
+/** What kind of way a BRouter segment uses, from its OSM tags. */
+export function classifyWayTags(tags: Record<string, string>): 'path' | 'lane' | 'quiet' | 'road' {
+  const hw = tags.highway ?? '';
+  if (hw === 'cycleway') return 'path';
+  if (['path', 'footway', 'track', 'bridleway'].includes(hw)) return 'path';
+  const lane = ['cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right'].some((k) => /^(lane|track)$/.test(tags[k] ?? ''));
+  if (lane) return 'lane';
+  if (QUIET.has(hw)) return 'quiet';
+  return 'road';
+}
+
+function parseTags(s: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const kv of s.split(' ')) {
+    const i = kv.indexOf('=');
+    if (i > 0) out[kv.slice(0, i)] = kv.slice(i + 1);
+  }
+  return out;
+}
+
+/** Shares of the route on trails, bike lanes, quiet streets and busier roads. */
+export function parseBreakdown(messages: unknown): RouteBreakdown | undefined {
+  if (!Array.isArray(messages) || messages.length < 2) return undefined;
+  const header = messages[0] as string[];
+  const iDist = header.indexOf('Distance');
+  const iTags = header.indexOf('WayTags');
+  if (iDist < 0 || iTags < 0) return undefined;
+  const totals = { path: 0, lane: 0, quiet: 0, road: 0, unpaved: 0 };
+  let all = 0;
+  for (const row of messages.slice(1) as string[][]) {
+    const d = Number(row[iDist]) || 0;
+    const tags = parseTags(row[iTags] ?? '');
+    totals[classifyWayTags(tags)] += d;
+    const surface = tags.surface;
+    if ((surface && UNPAVED.has(surface)) || (tags.highway === 'track' && !surface)) totals.unpaved += d;
+    all += d;
+  }
+  if (!all) return undefined;
+  return {
+    path: totals.path / all,
+    lane: totals.lane / all,
+    quiet: totals.quiet / all,
+    road: totals.road / all,
+    unpaved: totals.unpaved / all,
+  };
+}
 
 export function parseBRouter(json: BRouterGeoJSON): RouteResult {
   const f = json.features?.[0];
@@ -63,6 +123,7 @@ export function parseBRouter(json: BRouterGeoJSON): RouteResult {
     distanceM: num(p['track-length']),
     climbM: num(p['filtered ascend']),
     timeS: num(p['total-time']),
+    breakdown: parseBreakdown(p.messages),
   };
 }
 

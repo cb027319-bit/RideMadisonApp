@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, FlatList, Keyboard, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
@@ -14,7 +14,8 @@ import { useData } from '@/lib/data';
 import { formatDistance, type Region } from '@/lib/geo';
 import { useRoute, type SavedRide } from '@/lib/route';
 import {
-  buildGpx, formatDuration, googleMapsUrl, metersToFeet, PROFILE_META, searchPlaces, type PlaceResult, type RouteProfile,
+  buildGpx, formatDuration, googleMapsUrl, metersToFeet, PROFILE_META, searchPlaces, type PlaceResult, type RouteBreakdown,
+  type RouteProfile,
 } from '@/lib/routing';
 
 const ROUTE_COLOR = '#7c3aed';
@@ -23,6 +24,7 @@ export default function RouteScreen() {
   const { paths, location } = useData();
   const route = useRoute();
   const mapRef = useRef<MapView>(null);
+  const searchRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PlaceResult[]>([]);
@@ -78,6 +80,13 @@ export default function RouteScreen() {
       mapRef.current?.animateToRegion({ latitude: last.latitude, longitude: last.longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 }, 400);
     }
   }, [route.focusRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Where to?" tapped on the Map tab.
+  useEffect(() => {
+    if (!route.searchRequest) return;
+    const t = setTimeout(() => searchRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [route.searchRequest]);
 
   const onMapPress = (e: MapPressEvent) => {
     if ((e.nativeEvent as { action?: string }).action === 'marker-press') return;
@@ -163,6 +172,7 @@ export default function RouteScreen() {
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color={COLORS.muted} />
           <TextInput
+            ref={searchRef}
             value={query}
             onChangeText={setQuery}
             placeholder={route.stops.length ? 'Add a stop: search a place' : 'Where to? Search or tap the map'}
@@ -210,9 +220,12 @@ export default function RouteScreen() {
         <Pressable onPress={() => setPanelOpen((o) => !o)} style={styles.handleArea} accessibilityLabel={panelOpen ? 'Collapse route panel' : 'Expand route panel'}>
           <View style={styles.handle} />
           {hasRoute ? (
-            <Text style={styles.summary}>
-              {formatDistance(route.result!.distanceM)}  ·  {formatDuration(route.result!.timeS)}  ·  {metersToFeet(route.result!.climbM)} ft climb
-            </Text>
+            <>
+              <Text style={styles.summary}>
+                {formatDistance(route.result!.distanceM)}  ·  {formatDuration(route.result!.timeS)}  ·  {metersToFeet(route.result!.climbM)} ft climb
+              </Text>
+              {route.result!.breakdown && <Breakdown b={route.result!.breakdown} />}
+            </>
           ) : route.status === 'loading' ? (
             <View style={styles.row}><ActivityIndicator size="small" color={ROUTE_COLOR} /><Text style={styles.summaryMuted}>Finding a bike route…</Text></View>
           ) : route.status === 'error' ? (
@@ -323,6 +336,31 @@ export default function RouteScreen() {
 }
 
 // ---------- pieces ----------
+
+const MIX = [
+  { key: 'path', label: 'trails & paths', color: '#15803d' },
+  { key: 'lane', label: 'bike lanes', color: '#2563eb' },
+  { key: 'quiet', label: 'quiet streets', color: '#86efac' },
+  { key: 'road', label: 'busier roads', color: '#f97316' },
+] as const;
+
+function Breakdown({ b }: { b: RouteBreakdown }) {
+  const parts = MIX.filter((m) => b[m.key] >= 0.01);
+  const paved = Math.round((1 - b.unpaved) * 100);
+  return (
+    <View style={styles.mix} accessibilityLabel="Route surface breakdown">
+      <View style={styles.mixBar}>
+        {parts.map((m) => (
+          <View key={m.key} style={{ flex: b[m.key], backgroundColor: m.color }} />
+        ))}
+      </View>
+      <Text style={styles.mixText}>
+        {parts.map((m) => `${Math.round(b[m.key] * 100)}% ${m.label}`).join('  ·  ')}
+        {`  ·  ${paved}% paved`}
+      </Text>
+    </View>
+  );
+}
 
 type Role = 'start' | 'stop' | 'end';
 
@@ -465,6 +503,9 @@ const styles = StyleSheet.create({
   handleArea: { paddingTop: 8, paddingBottom: 10, alignItems: 'center', gap: 8 },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' },
   summary: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  mix: { alignSelf: 'stretch', gap: 4 },
+  mixBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#e5e7eb' },
+  mixText: { fontSize: 12, color: COLORS.muted, textAlign: 'center' },
   summaryMuted: { fontSize: 15, color: COLORS.muted, textAlign: 'center' },
   errorText: { fontSize: 14, color: '#b91c1c', fontWeight: '600', textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },

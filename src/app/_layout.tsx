@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { COLORS } from '@/lib/config';
 import { DataProvider } from '@/lib/data';
+import { PrefsProvider } from '@/lib/prefs';
 import { RouteProvider } from '@/lib/route';
 
 export const unstable_settings = {
@@ -17,14 +18,16 @@ const theme = {
 export default function RootLayout() {
   return (
     <ThemeProvider value={theme}>
-      <DataProvider>
-        <RouteProvider>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-          <StatusBar style="dark" />
-        </RouteProvider>
-      </DataProvider>
+      <PrefsProvider>
+        <DataProvider>
+          <RouteProvider>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
+            <StatusBar style="dark" />
+          </RouteProvider>
+        </DataProvider>
+      </PrefsProvider>
     </ThemeProvider>
   );
 }

@@ -9,16 +9,22 @@ import { fetchBCycle, type BCycleStation } from './bcycle';
 import { cached } from './cache';
 import { BCYCLE_REFRESH_MS, CACHE_TTL } from './config';
 import { fetchPaths, fetchPlaces, type BikePath, type Place } from './osm';
+import { groupTrails, type Trail } from './trails';
 
 export type Selection =
   | { type: 'station'; item: BCycleStation }
   | { type: 'place'; item: Place }
-  | { type: 'path'; item: BikePath };
+  | { type: 'trail'; item: Trail };
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
 interface DataState {
   paths: BikePath[];
+  /** Paths grouped into whole named trails. */
+  trails: Trail[];
+  trailOfPath: Map<string, string>;
+  trailById: Map<string, Trail>;
+  pathById: Map<string, BikePath>;
   places: Place[];
   stations: BCycleStation[];
   pathsState: LoadState;
@@ -166,13 +172,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return live ? { type: 'station', item: live } : rawSelection;
   }, [rawSelection, stations]);
 
+  const { trails, trailOfPath } = useMemo(() => groupTrails(paths), [paths]);
+  const trailById = useMemo(() => new Map(trails.map((t) => [t.id, t])), [trails]);
+  const pathById = useMemo(() => new Map(paths.map((p) => [p.id, p])), [paths]);
+
   const value = useMemo<DataState>(
     () => ({
-      paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
+      paths, trails, trailOfPath, trailById, pathById, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
       offlineCopy, lastError, location, locationDenied, selection, select: setSelection,
       focusRequest, focus, refreshAll, refreshStations,
     }),
-    [paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
+    [paths, trails, trailOfPath, trailById, pathById, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
       offlineCopy, lastError, location, locationDenied, selection, focusRequest, focus, refreshAll, refreshStations],
   );
 

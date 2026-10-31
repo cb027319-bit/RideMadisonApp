@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  brouterUrl, buildGpx, formatDuration, googleMapsUrl, metersToFeet, parseBRouter, parsePhoton, shortLabel,
+  brouterUrl, buildGpx, classifyWayTags, parseBreakdown, formatDuration, googleMapsUrl, metersToFeet, parseBRouter, parsePhoton, shortLabel,
 } from '../src/lib/routing';
 
 const capitol = { latitude: 43.0747, longitude: -89.3842 };
@@ -72,4 +72,21 @@ test('formats durations and feet', () => {
   assert.equal(formatDuration(95 * 60), '1 hr 35 min');
   assert.equal(formatDuration(120 * 60), '2 hr');
   assert.equal(metersToFeet(30), 98);
+});
+
+test('route breakdown by way type and surface', () => {
+  const b = parseBreakdown([
+    ['Longitude', 'Latitude', 'Elevation', 'Distance', 'CostPerKm', 'ElevCost', 'TurnCost', 'NodeCost', 'InitialCost', 'WayTags', 'NodeTags', 'Time', 'Energy'],
+    ['-89384200', '43074700', '262', '600', '1000', '0', '0', '0', '0', 'highway=cycleway surface=asphalt', '', '0', '0'],
+    ['-89390000', '43073000', '262', '200', '1000', '0', '0', '0', '0', 'highway=residential surface=asphalt', '', '0', '0'],
+    ['-89395000', '43072000', '262', '100', '1000', '0', '0', '0', '0', 'highway=secondary cycleway:right=lane', '', '0', '0'],
+    ['-89400000', '43072000', '262', '100', '1000', '0', '0', '0', '0', 'highway=path bicycle=designated surface=fine_gravel', '', '0', '0'],
+  ])!;
+  assert.equal(b.path, 0.7);
+  assert.equal(b.quiet, 0.2);
+  assert.equal(b.lane, 0.1);
+  assert.equal(b.road, 0);
+  assert.equal(b.unpaved, 0.1);
+  assert.equal(parseBreakdown(undefined), undefined);
+  assert.equal(classifyWayTags({ highway: 'primary' }), 'road');
 });

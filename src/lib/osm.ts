@@ -78,7 +78,7 @@ out tags center;`;
 
 // ---------- classification ----------
 
-const UNPAVED = new Set([
+export const UNPAVED = new Set([
   'unpaved', 'gravel', 'fine_gravel', 'compacted', 'dirt', 'earth', 'ground',
   'grass', 'sand', 'mud', 'woodchips', 'pebblestone', 'rock',
 ]);
