@@ -11,9 +11,10 @@ interface Props {
   selection: Selection;
   location: { latitude: number; longitude: number } | null;
   onClose: () => void;
+  onRouteHere: (label: string) => void;
 }
 
-export function DetailCard({ selection, location, onClose }: Props) {
+export function DetailCard({ selection, location, onClose, onRouteHere }: Props) {
   const center = selectionCenter(selection);
   const dist = location
     ? formatDistance(distanceMeters(location.latitude, location.longitude, center.latitude, center.longitude))
@@ -35,7 +36,8 @@ export function DetailCard({ selection, location, onClose }: Props) {
 
       {selection.type !== 'path' && (
         <View style={styles.actions}>
-          <Action icon="bicycle" label="Directions" primary onPress={() => openBikeDirections(center.latitude, center.longitude)} />
+          <Action icon="navigate" label="Route here" primary onPress={() => onRouteHere(title(selection))} />
+          <Action icon="bicycle" label="Google Maps" onPress={() => openBikeDirections(center.latitude, center.longitude)} />
           {selection.type === 'place' && selection.item.phone && (
             <Action icon="call" label="Call" onPress={() => callPhone(selection.item.phone!)} />
           )}

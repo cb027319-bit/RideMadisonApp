@@ -17,8 +17,13 @@ export const BCYCLE_GBFS_URL = 'https://gbfs.bcycle.com/bcycle_madison/gbfs.json
 /** Public Overpass (OpenStreetMap) endpoints, tried in order. */
 export const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
+
+/** Identify the app to public servers (some reject anonymous clients). */
+export const USER_AGENT = 'RideMadison/0.1 (+https://ridemadison.com)';
 
 export const CACHE_TTL = {
   paths: 7 * 24 * 3600 * 1000,

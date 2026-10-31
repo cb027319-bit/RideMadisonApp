@@ -2,7 +2,7 @@
 // (bike shops, fix-it stations, bike parking, drinking water).
 // Parsing is pure and unit-tested (see tests/osm.test.ts).
 
-import { COVERAGE_BBOX, OVERPASS_URLS } from './config';
+import { COVERAGE_BBOX, OVERPASS_URLS, USER_AGENT } from './config';
 import { bboxOf, round5, simplify, type BBox, type LonLat } from './geo';
 
 // ---------- types ----------
@@ -210,21 +210,34 @@ export function parsePlaces(json: { elements?: OverpassElement[] }): Place[] {
 // ---------- fetching ----------
 
 async function overpass(query: string): Promise<{ elements?: OverpassElement[] }> {
-  let lastError: unknown;
+  const errors: string[] = [];
   for (const url of OVERPASS_URLS) {
+    const host = url.split('/')[2];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          'User-Agent': USER_AGENT,
+        },
         body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
       });
-      if (!res.ok) throw new Error(`Overpass ${res.status}`);
-      return await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { elements?: OverpassElement[]; remark?: string };
+      if (!json.elements?.length && json.remark) throw new Error(json.remark.slice(0, 80));
+      return json;
     } catch (err) {
-      lastError = err;
+      const msg = err instanceof Error ? (err.name === 'AbortError' ? 'timed out' : err.message) : String(err);
+      errors.push(`${host}: ${msg}`);
+    } finally {
+      clearTimeout(timer);
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('Overpass unavailable');
+  throw new Error(errors.join(' | '));
 }
 
 export async function fetchPaths(): Promise<BikePath[]> {

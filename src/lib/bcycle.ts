@@ -1,7 +1,7 @@
 // Madison BCycle live station data from its public GBFS feed (no API key).
 // Station locations change rarely; bike/dock counts update every minute or so.
 
-import { BCYCLE_GBFS_URL } from './config';
+import { BCYCLE_GBFS_URL, USER_AGENT } from './config';
 
 export interface BCycleStation {
   id: string;
@@ -86,7 +86,7 @@ export function mergeStations(
 let cachedUrls: { info?: string; status?: string } | null = null;
 
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
+  const res = await fetch(url, { headers: { 'Cache-Control': 'no-cache', 'User-Agent': USER_AGENT } });
   if (!res.ok) throw new Error(`BCycle feed ${res.status}`);
   return (await res.json()) as T;
 }

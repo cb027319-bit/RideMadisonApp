@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps';
@@ -7,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DetailCard, selectionCenter } from '@/components/detail-card';
 import { COLORS, INITIAL_REGION } from '@/lib/config';
 import { useData } from '@/lib/data';
+import { useRoute } from '@/lib/route';
 import { bboxIntersects, pointInBBox, regionToBBox, type Region } from '@/lib/geo';
 import { PATH_META, PLACE_META } from '@/lib/labels';
 import type { Place, PlaceKind } from '@/lib/osm';
@@ -30,9 +32,10 @@ const MAX_DENSE_MARKERS = 250;
 
 export default function MapScreen() {
   const {
-    paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt, offlineCopy,
+    paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt, offlineCopy, lastError,
     location, selection, select, focusRequest, refreshAll,
   } = useData();
+  const { routeTo } = useRoute();
   const mapRef = useRef<MapView>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
   const [layers, setLayers] = useState<Record<LayerId, boolean>>({
@@ -190,7 +193,10 @@ export default function MapScreen() {
             onPress={status.retry ? () => void refreshAll() : undefined}
             accessibilityRole={status.retry ? 'button' : 'text'}>
             {status.loading && <ActivityIndicator size="small" color={COLORS.brand} />}
-            <Text style={styles.bannerText}>{status.text}</Text>
+            <View style={{ flexShrink: 1 }}>
+              <Text style={styles.bannerText}>{status.text}</Text>
+              {status.retry && lastError ? <Text style={styles.errorText}>{lastError}</Text> : null}
+            </View>
           </Pressable>
         )}
         {hiddenDense && !status && (
@@ -204,7 +210,16 @@ export default function MapScreen() {
         <Pressable style={styles.locate} onPress={recenter} accessibilityLabel="Center on my location">
           <Ionicons name="locate" size={22} color={COLORS.brand} />
         </Pressable>
-        {selection && <DetailCard selection={selection} location={location} onClose={() => select(null)} />}
+        {selection && <DetailCard
+            selection={selection}
+            location={location}
+            onClose={() => select(null)}
+            onRouteHere={(label) => {
+              routeTo(selectionCenter(selection), label);
+              select(null);
+              router.navigate('/route');
+            }}
+          />}
       </View>
     </View>
   );
@@ -247,6 +262,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 14, fontWeight: '600', color: COLORS.text },
   banner: {
     alignSelf: 'center',
+    maxWidth: '92%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -257,6 +273,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   bannerText: { fontSize: 13, fontWeight: '600', color: COLORS.text },
+  errorText: { fontSize: 11, color: '#b91c1c', marginTop: 2 },
   bottom: { position: 'absolute', left: 12, right: 12, bottom: 16, gap: 12 },
   locate: {
     alignSelf: 'flex-end',

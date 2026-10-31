@@ -27,6 +27,8 @@ interface DataState {
   stationsUpdatedAt?: number;
   /** True when we're showing a saved copy because the network failed. */
   offlineCopy: boolean;
+  /** Last data-loading error, shown to help diagnose connection problems. */
+  lastError: string | null;
   location: { latitude: number; longitude: number } | null;
   locationDenied: boolean;
   selection: Selection | null;
@@ -49,6 +51,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [stationsState, setStationsState] = useState<LoadState>('loading');
   const [stationsUpdatedAt, setStationsUpdatedAt] = useState<number>();
   const [offlineCopy, setOfflineCopy] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
   const [location, setLocation] = useState<DataState['location']>(null);
   const [locationDenied, setLocationDenied] = useState(false);
   const [rawSelection, setSelection] = useState<Selection | null>(null);
@@ -62,14 +65,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPlacesState('ready');
         if (r.stale) setOfflineCopy(true);
       })
-      .catch(() => setPlacesState('error'));
+      .catch((e: unknown) => {
+        setPlacesState('error');
+        setLastError(`Places: ${e instanceof Error ? e.message : String(e)}`);
+      });
     const pathsP = cached('paths:v1', CACHE_TTL.paths, fetchPaths, { force })
       .then((r) => {
         setPaths(r.value);
         setPathsState('ready');
         if (r.stale) setOfflineCopy(true);
       })
-      .catch(() => setPathsState('error'));
+      .catch((e: unknown) => {
+        setPathsState('error');
+        setLastError(`Paths: ${e instanceof Error ? e.message : String(e)}`);
+      });
     await Promise.all([placesP, pathsP]);
   }, []);
 
@@ -79,13 +88,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setStations(data);
       setStationsUpdatedAt(Date.now());
       setStationsState('ready');
-    } catch {
+    } catch (e) {
       setStationsState((s) => (s === 'ready' ? s : 'error'));
+      setLastError(`BCycle: ${e instanceof Error ? e.message : String(e)}`);
     }
   }, []);
 
   const refreshAll = useCallback(async () => {
     setOfflineCopy(false);
+    setLastError(null);
     setPathsState((s) => (s === 'ready' ? s : 'loading'));
     setPlacesState((s) => (s === 'ready' ? s : 'loading'));
     setStationsState((s) => (s === 'ready' ? s : 'loading'));
@@ -158,11 +169,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DataState>(
     () => ({
       paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
-      offlineCopy, location, locationDenied, selection, select: setSelection,
+      offlineCopy, lastError, location, locationDenied, selection, select: setSelection,
       focusRequest, focus, refreshAll, refreshStations,
     }),
     [paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
-      offlineCopy, location, locationDenied, selection, focusRequest, focus, refreshAll, refreshStations],
+      offlineCopy, lastError, location, locationDenied, selection, focusRequest, focus, refreshAll, refreshStations],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

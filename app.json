@@ -40,7 +40,8 @@
         {
           "locationWhenInUsePermission": "Ride Madison uses your location to show nearby bike paths, BCycle stations and shops."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "reactCompiler": true
