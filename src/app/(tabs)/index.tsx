@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DetailCard, selectionCenter } from '@/components/detail-card';
+import { DetailCard, PartnerMark, selectionCenter } from '@/components/detail-card';
 import { Onboarding } from '@/components/onboarding';
 import { PathLines } from '@/components/path-lines';
 import { COLORS, INITIAL_REGION, MADISON_CENTER } from '@/lib/config';
@@ -14,6 +14,7 @@ import { useData, type Selection } from '@/lib/data';
 import { pointInBBox, regionToBBox, type Region } from '@/lib/geo';
 import { PLACE_META } from '@/lib/labels';
 import type { Place, PlaceKind } from '@/lib/osm';
+import { sponsorForTrail, trackPartner } from '@/lib/partners';
 import { usePrefs } from '@/lib/prefs';
 import { useRoute } from '@/lib/route';
 import { closestPointOnTrail, nearestPath } from '@/lib/trails';
@@ -41,7 +42,7 @@ const HIGHLIGHT = '#facc15';
 
 export default function MapScreen() {
   const {
-    paths, trailOfPath, trailById, pathById, places, stations, pathsState, placesState, stationsState,
+    paths, trailOfPath, trailById, pathById, places, partners, stations, pathsState, placesState, stationsState,
     stationsUpdatedAt, offlineCopy, lastError, location, selection, select, focusRequest, refreshAll,
   } = useData();
   const { routeTo, requestSearch } = useRoute();
@@ -67,11 +68,38 @@ export default function MapScreen() {
   const showDense = region.latitudeDelta <= DENSE_MAX_LAT_DELTA;
   const showStations = layers.bcycle && region.latitudeDelta <= STATIONS_MAX_LAT_DELTA;
 
+  // Paying partners: always shown (unless zoomed far out), as larger branded pins.
+  const visiblePartners = useMemo(
+    () =>
+      region.latitudeDelta > 0.3
+        ? []
+        : partners.filter(
+            (p) => p.latitude != null && p.longitude != null && pointInBBox(p.latitude, p.longitude, view),
+          ),
+    [partners, region.latitudeDelta, view],
+  );
+  const partnerPlaceIds = useMemo(
+    () => new Set(partners.map((p) => p.osm_place_id).filter((id): id is string => !!id)),
+    [partners],
+  );
+
+  // Ad reporting: count each partner pin once per app session when it appears on screen.
+  const seenPins = useRef(new Set<string>());
+  useEffect(() => {
+    for (const p of visiblePartners) {
+      if (!seenPins.current.has(p.id)) {
+        seenPins.current.add(p.id);
+        trackPartner(p, 'impression', 'pin');
+      }
+    }
+  }, [visiblePartners]);
+
   const visiblePlaces = useMemo(() => {
     const out: Place[] = [];
     let dense = 0;
     for (const p of places) {
       if (!layers[p.kind]) continue;
+      if (partnerPlaceIds.has(p.id)) continue; // shown as a partner pin instead
       const isDense = p.kind === 'parking' || p.kind === 'water';
       if (isDense && (!showDense || dense >= MAX_DENSE_MARKERS)) continue;
       if (!pointInBBox(p.lat, p.lon, view)) continue;
@@ -79,7 +107,7 @@ export default function MapScreen() {
       out.push(p);
     }
     return out;
-  }, [places, layers, showDense, view]);
+  }, [places, layers, showDense, view, partnerPlaceIds]);
 
   const visibleStations = showStations ? stations.filter((s) => pointInBBox(s.lat, s.lon, view)) : [];
 
@@ -90,7 +118,7 @@ export default function MapScreen() {
   }, [selection, pathById]);
 
   // Let custom pins draw before freezing them as images (blank pins on some Android devices otherwise).
-  const pinsKey = `${visiblePlaces.length}:${visibleStations.length}:${stationsUpdatedAt ?? 0}`;
+  const pinsKey = `${visiblePlaces.length}:${visibleStations.length}:${visiblePartners.length}:${stationsUpdatedAt ?? 0}`;
   const [settledPinsKey, setSettledPinsKey] = useState('');
   const trackPins = settledPinsKey !== pinsKey;
   useEffect(() => {
@@ -172,6 +200,24 @@ export default function MapScreen() {
             accessibilityLabel={`${PLACE_META[p.kind].label}${p.name ? `: ${p.name}` : ''}`}>
             <View style={[styles.pin, { backgroundColor: PLACE_META[p.kind].color }]}>
               <Ionicons name={PLACE_META[p.kind].icon as keyof typeof Ionicons.glyphMap} size={12} color="#fff" />
+            </View>
+          </Marker>
+        ))}
+
+        {visiblePartners.map((p) => (
+          <Marker
+            key={p.id}
+            coordinate={{ latitude: p.latitude!, longitude: p.longitude! }}
+            onPress={() => select({ type: 'partner', item: p })}
+            tracksViewChanges={trackPins}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={20}
+            accessibilityLabel={`Ride Madison partner: ${p.name}`}>
+            <View style={styles.partnerPin}>
+              <PartnerMark partner={p} size={30} />
+              <View style={styles.partnerStar}>
+                <Ionicons name="star" size={9} color="#fff" />
+              </View>
             </View>
           </Marker>
         ))}
@@ -274,6 +320,8 @@ export default function MapScreen() {
             location={location}
             target={targetFor(selection)}
             isEbikeRider={prefs?.bike === 'ebike'}
+            sponsor={selection.type === 'trail' ? sponsorForTrail(partners, selection.item.name) : undefined}
+            onOpenPartner={(p) => select({ type: 'partner', item: p })}
             onClose={() => select(null)}
             onRouteHere={(label) => {
               routeTo(targetFor(selection), label);
@@ -391,6 +439,14 @@ const styles = StyleSheet.create({
   pin: {
     width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#fff',
+  },
+  partnerPin: {
+    padding: 3, borderRadius: 20, backgroundColor: '#f59e0b',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+  },
+  partnerStar: {
+    position: 'absolute', right: -2, top: -2, width: 15, height: 15, borderRadius: 8, backgroundColor: '#f59e0b',
+    borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center',
   },
   station: {
     width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center',

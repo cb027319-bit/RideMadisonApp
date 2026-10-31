@@ -9,12 +9,14 @@ import { fetchBCycle, type BCycleStation } from './bcycle';
 import { cached } from './cache';
 import { BCYCLE_REFRESH_MS, CACHE_TTL } from './config';
 import { fetchPaths, fetchPlaces, type BikePath, type Place } from './osm';
+import { fetchPartners, type Partner } from './partners';
 import { groupTrails, type Trail } from './trails';
 
 export type Selection =
   | { type: 'station'; item: BCycleStation }
   | { type: 'place'; item: Place }
-  | { type: 'trail'; item: Trail };
+  | { type: 'trail'; item: Trail }
+  | { type: 'partner'; item: Partner };
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -26,6 +28,8 @@ interface DataState {
   trailById: Map<string, Trail>;
   pathById: Map<string, BikePath>;
   places: Place[];
+  /** Paying local businesses (featured pins, trail sponsors). */
+  partners: Partner[];
   stations: BCycleStation[];
   pathsState: LoadState;
   placesState: LoadState;
@@ -51,6 +55,7 @@ const Ctx = createContext<DataState | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [paths, setPaths] = useState<BikePath[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [stations, setStations] = useState<BCycleStation[]>([]);
   const [pathsState, setPathsState] = useState<LoadState>('loading');
   const [placesState, setPlacesState] = useState<LoadState>('loading');
@@ -85,7 +90,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPathsState('error');
         setLastError(`Paths: ${e instanceof Error ? e.message : String(e)}`);
       });
-    await Promise.all([placesP, pathsP]);
+    const partnersP = fetchPartners(force)
+      .then(setPartners)
+      .catch(() => {});
+    await Promise.all([placesP, pathsP, partnersP]);
   }, []);
 
   const refreshStations = useCallback(async () => {
@@ -178,11 +186,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<DataState>(
     () => ({
-      paths, trails, trailOfPath, trailById, pathById, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
+      paths, trails, trailOfPath, trailById, pathById, places, partners, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
       offlineCopy, lastError, location, locationDenied, selection, select: setSelection,
       focusRequest, focus, refreshAll, refreshStations,
     }),
-    [paths, trails, trailOfPath, trailById, pathById, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
+    [paths, trails, trailOfPath, trailById, pathById, places, partners, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
       offlineCopy, lastError, location, locationDenied, selection, focusRequest, focus, refreshAll, refreshStations],
   );
 

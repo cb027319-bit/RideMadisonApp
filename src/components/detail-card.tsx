@@ -1,4 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
+import { useEffect } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { COLORS } from '@/lib/config';
@@ -6,6 +8,7 @@ import type { Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { PATH_META, PLACE_META, timeAgo } from '@/lib/labels';
 import { callPhone, openBikeDirections, openWebsite } from '@/lib/links';
+import { CATEGORY_LABEL, initials, trackPartner, type Partner } from '@/lib/partners';
 import { TRAIL_PASS_URL, type Trail } from '@/lib/trails';
 
 interface Props {
@@ -14,15 +17,27 @@ interface Props {
   /** Point to route to (for trails: the closest point on the trail). */
   target: { latitude: number; longitude: number };
   isEbikeRider?: boolean;
+  /** Corridor sponsor of the selected trail, if any. */
+  sponsor?: Partner;
+  onOpenPartner?: (p: Partner) => void;
   onClose: () => void;
   onRouteHere: (label: string) => void;
 }
 
-export function DetailCard({ selection, location, target, isEbikeRider, onClose, onRouteHere }: Props) {
+export function DetailCard({ selection, location, target, isEbikeRider, sponsor, onOpenPartner, onClose, onRouteHere }: Props) {
   const dist = location
     ? formatDistance(distanceMeters(location.latitude, location.longitude, target.latitude, target.longitude))
     : null;
   const name = title(selection);
+  const partner = selection.type === 'partner' ? selection.item : undefined;
+
+  // Ad reporting: a partner card opened, or a sponsor line shown on a trail.
+  useEffect(() => {
+    if (partner) trackPartner(partner, 'open', 'card');
+  }, [partner?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (sponsor && selection.type === 'trail') trackPartner(sponsor, 'impression', 'trail_sponsor');
+  }, [sponsor?.id, selection.type === 'trail' ? selection.item.id : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View style={styles.card} accessibilityRole="summary">
@@ -36,6 +51,22 @@ export function DetailCard({ selection, location, target, isEbikeRider, onClose,
         </Pressable>
       </View>
 
+      {sponsor && selection.type === 'trail' && (
+        <Pressable
+          style={styles.sponsor}
+          onPress={() => onOpenPartner?.(sponsor)}
+          accessibilityRole="button"
+          accessibilityLabel={`Presented by ${sponsor.name}`}>
+          <PartnerMark partner={sponsor} size={30} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sponsorLabel}>PRESENTED BY</Text>
+            <Text style={styles.sponsorName} numberOfLines={1}>{sponsor.name}{sponsor.demo ? ' (sample)' : ''}</Text>
+            {sponsor.offer ? <Text style={styles.sponsorOffer} numberOfLines={2}>{sponsor.offer}</Text> : null}
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#92400e" />
+        </Pressable>
+      )}
+
       <ScrollView style={{ maxHeight: 260 }} bounces={false}>
         <Body selection={selection} isEbikeRider={isEbikeRider} />
       </ScrollView>
@@ -45,7 +76,10 @@ export function DetailCard({ selection, location, target, isEbikeRider, onClose,
           icon="navigate"
           label={selection.type === 'trail' ? 'Route to trail' : 'Route here'}
           primary
-          onPress={() => onRouteHere(name)}
+          onPress={() => {
+            if (partner) trackPartner(partner, 'route', 'card');
+            onRouteHere(name);
+          }}
         />
         {selection.type === 'trail' && selection.item.rules && (
           <Action icon="ticket-outline" label="Trail pass" onPress={() => void Linking.openURL(TRAIL_PASS_URL)} />
@@ -53,14 +87,35 @@ export function DetailCard({ selection, location, target, isEbikeRider, onClose,
         {selection.type === 'station' && (
           <Action icon="flash-outline" label="BCycle app" onPress={() => void Linking.openURL('https://madison.bcycle.com')} />
         )}
-        {selection.type === 'place' && selection.item.phone && (
-          <Action icon="call" label="Call" onPress={() => callPhone(selection.item.phone!)} />
+        {(selection.type === 'place' || selection.type === 'partner') && selection.item.phone && (
+          <Action
+            icon="call"
+            label="Call"
+            onPress={() => {
+              if (partner) trackPartner(partner, 'call', 'card');
+              callPhone(selection.item.phone!);
+            }}
+          />
         )}
-        {selection.type === 'place' && selection.item.website && (
-          <Action icon="globe-outline" label="Website" onPress={() => openWebsite(selection.item.website!)} />
+        {(selection.type === 'place' || selection.type === 'partner') && selection.item.website && (
+          <Action
+            icon="globe-outline"
+            label="Website"
+            onPress={() => {
+              if (partner) trackPartner(partner, 'website', 'card');
+              openWebsite(selection.item.website!);
+            }}
+          />
         )}
         {selection.type !== 'trail' && (
-          <Action icon="logo-google" label="Google Maps" onPress={() => openBikeDirections(target.latitude, target.longitude)} />
+          <Action
+            icon="logo-google"
+            label="Google Maps"
+            onPress={() => {
+              if (partner) trackPartner(partner, 'directions', 'card');
+              openBikeDirections(target.latitude, target.longitude);
+            }}
+          />
         )}
       </View>
     </View>
@@ -69,6 +124,7 @@ export function DetailCard({ selection, location, target, isEbikeRider, onClose,
 
 function Body({ selection, isEbikeRider }: { selection: Selection; isEbikeRider?: boolean }) {
   if (selection.type === 'trail') return <TrailBody trail={selection.item} isEbikeRider={isEbikeRider} />;
+  if (selection.type === 'partner') return <PartnerBody partner={selection.item} />;
   if (selection.type === 'station') {
     const s = selection.item;
     return (
@@ -93,6 +149,42 @@ function Body({ selection, isEbikeRider }: { selection: Selection; isEbikeRider?
       {p.hours ? <Text style={styles.line}>Hours: {p.hours}</Text> : null}
       {p.details.length > 0 && <Text style={styles.line}>{p.details.join('  ·  ')}</Text>}
       <Text style={styles.source}>Source: OpenStreetMap · confirm hours before you go</Text>
+    </View>
+  );
+}
+
+function PartnerBody({ partner }: { partner: Partner }) {
+  return (
+    <View style={{ gap: 8 }}>
+      {partner.photo_url ? (
+        <Image source={{ uri: partner.photo_url }} style={styles.photo} contentFit="cover" accessibilityIgnoresInvertColors />
+      ) : null}
+      <View style={styles.partnerBadge}>
+        <Ionicons name="ribbon" size={13} color="#92400e" />
+        <Text style={styles.partnerBadgeText}>Ride Madison partner{partner.demo ? ' · sample' : ''}</Text>
+      </View>
+      {partner.blurb ? <Text style={styles.line}>{partner.blurb}</Text> : null}
+      {partner.offer ? (
+        <View style={styles.offer}>
+          <Text style={styles.offerLabel}>RIDER OFFER</Text>
+          <Text style={styles.offerText}>{partner.offer}</Text>
+        </View>
+      ) : null}
+      {partner.address ? <Text style={styles.muted}>{partner.address}</Text> : null}
+      <Text style={styles.source}>Sponsored listing</Text>
+    </View>
+  );
+}
+
+/** Round brand mark: logo if provided, otherwise initials on the brand color. */
+export function PartnerMark({ partner, size }: { partner: Partner; size: number }) {
+  const r = size / 2;
+  if (partner.logo_url) {
+    return <Image source={{ uri: partner.logo_url }} style={{ width: size, height: size, borderRadius: r }} contentFit="cover" />;
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: r, backgroundColor: partner.color ?? COLORS.brand, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: '#fff', fontWeight: '800', fontSize: size * 0.38 }}>{initials(partner.name)}</Text>
     </View>
   );
 }
@@ -176,6 +268,9 @@ function Action({ icon, label, onPress, primary }: { icon: keyof typeof Ionicons
 
 /** Where a selection sits on the map (for trails, the middle of the longest piece). */
 export function selectionCenter(s: Selection, pathCoords?: [number, number][]): { latitude: number; longitude: number } {
+  if (s.type === 'partner') {
+    return { latitude: s.item.latitude ?? 43.0731, longitude: s.item.longitude ?? -89.3844 };
+  }
   if (s.type === 'trail') {
     if (pathCoords?.length) {
       const c = pathCoords[Math.floor(pathCoords.length / 2)];
@@ -189,12 +284,14 @@ export function selectionCenter(s: Selection, pathCoords?: [number, number][]): 
 
 function kicker(s: Selection): string {
   if (s.type === 'station') return 'BCycle station';
+  if (s.type === 'partner') return CATEGORY_LABEL[s.item.category] ?? 'Local business';
   if (s.type === 'place') return PLACE_META[s.item.kind].label;
   return s.item.kind === 'lane' ? 'Bike lane' : PATH_META[s.item.kind].label;
 }
 
 function title(s: Selection): string {
   if (s.type === 'station') return s.item.name;
+  if (s.type === 'partner') return s.item.name;
   if (s.type === 'place') return s.item.name ?? PLACE_META[s.item.kind].fallbackName;
   return s.item.name ?? (s.item.kind === 'lane' ? 'Bike lane' : 'Unnamed path');
 }
@@ -224,6 +321,22 @@ const styles = StyleSheet.create({
   stats: { flexDirection: 'row', gap: 12 },
   statLabel: { fontSize: 12, color: COLORS.muted },
   statValue: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginTop: 2 },
+  sponsor: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fffbeb', borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#fde68a',
+  },
+  sponsorLabel: { fontSize: 10, fontWeight: '800', color: '#92400e', letterSpacing: 0.6 },
+  sponsorName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  sponsorOffer: { fontSize: 13, color: COLORS.text, marginTop: 1 },
+  photo: { width: '100%', height: 140, borderRadius: 12, backgroundColor: '#f3f4f6' },
+  partnerBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', backgroundColor: '#fef3c7',
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+  },
+  partnerBadgeText: { fontSize: 12, fontWeight: '700', color: '#92400e' },
+  offer: { backgroundColor: '#ecfdf5', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#a7f3d0' },
+  offerLabel: { fontSize: 10, fontWeight: '800', color: '#047857', letterSpacing: 0.6 },
+  offerText: { fontSize: 15, fontWeight: '600', color: COLORS.text, marginTop: 2 },
   rules: { backgroundColor: '#fffbeb', borderRadius: 12, padding: 12, gap: 6, marginTop: 4 },
   rulesTitle: { fontSize: 14, fontWeight: '800', color: '#92400e' },
   rule: { flexDirection: 'row', gap: 8 },
