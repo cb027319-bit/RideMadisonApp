@@ -10,7 +10,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
-import { accountsConfigured, supabase, type Profile } from './supabase';
+import { accountsConfigured, fetchEnabledProviders, supabase, type Profile } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -22,6 +22,8 @@ interface AuthState {
   session: Session | null;
   profile: Profile | null;
   appleAvailable: boolean;
+  /** Google sign-in is switched on in Supabase. */
+  googleEnabled: boolean;
   /** Sign-up sheet */
   sheet: { mode: SheetMode; reason?: string } | null;
   /** True once the first-open welcome has been shown or answered. */
@@ -48,7 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [ready, setReady] = useState(!accountsConfigured);
-  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleDevice, setAppleDevice] = useState(false);
+  const [providers, setProviders] = useState({ google: false, apple: false });
+  const appleAvailable = appleDevice && providers.apple;
   const [sheet, setSheet] = useState<AuthState['sheet']>(null);
   const [welcomeHandled, setWelcomeHandled] = useState(!accountsConfigured);
 
@@ -65,7 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
-    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
+    AppleAuthentication.isAvailableAsync().then(setAppleDevice).catch(() => {});
+  }, []);
+
+  // Only offer the sign-in methods that are turned on in Supabase.
+  useEffect(() => {
+    if (!accountsConfigured) return;
+    fetchEnabledProviders()
+      .then((p) => setProviders({ google: p.google, apple: p.apple }))
+      .catch(() => {});
   }, []);
 
   // First open: show the sign-up welcome once (if not already signed in).
@@ -207,11 +219,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthState>(
     () => ({
-      configured: accountsConfigured, ready, session, profile, appleAvailable, sheet, welcomeHandled,
+      configured: accountsConfigured, ready, session, profile, appleAvailable, googleEnabled: providers.google, sheet, welcomeHandled,
       openSheet, closeSheet, requireAccount, sendEmailCode, verifyEmailCode, signInWithGoogle, signInWithApple,
       updateProfile, signOut, deleteAccount,
     }),
-    [ready, session, profile, appleAvailable, sheet, welcomeHandled, openSheet, closeSheet, requireAccount,
+    [ready, session, profile, appleAvailable, providers.google, sheet, welcomeHandled, openSheet, closeSheet, requireAccount,
       sendEmailCode, verifyEmailCode, signInWithGoogle, signInWithApple, updateProfile, signOut, deleteAccount],
   );
 

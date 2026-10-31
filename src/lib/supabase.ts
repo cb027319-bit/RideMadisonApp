@@ -13,6 +13,14 @@ import { AppState } from 'react-native';
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
+/** Which sign-in methods are switched on in the Supabase dashboard. */
+export async function fetchEnabledProviders(): Promise<{ google: boolean; apple: boolean; email: boolean }> {
+  const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: anonKey } });
+  if (!res.ok) throw new Error(`Auth settings ${res.status}`);
+  const j = (await res.json()) as { external?: Record<string, boolean> };
+  return { google: !!j.external?.google, apple: !!j.external?.apple, email: j.external?.email !== false };
+}
+
 export const accountsConfigured = /^https:\/\/.+/.test(url) && anonKey.length > 20;
 
 export const supabase: SupabaseClient | null = accountsConfigured

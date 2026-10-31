@@ -94,20 +94,24 @@ function SheetBody() {
                     onPress={() => void run('apple', auth.signInWithApple)}
                   />
                 )}
-                <Pressable
-                  style={({ pressed }) => [styles.providerBtn, pressed && styles.pressed]}
-                  onPress={() => void run('google', auth.signInWithGoogle)}
-                  disabled={!!busy}
-                  accessibilityRole="button">
-                  {busy === 'google' ? <ActivityIndicator /> : <Ionicons name="logo-google" size={20} color="#ea4335" />}
-                  <Text style={styles.providerText}>Continue with Google</Text>
-                </Pressable>
+                {auth.googleEnabled && (
+                  <Pressable
+                    style={({ pressed }) => [styles.providerBtn, pressed && styles.pressed]}
+                    onPress={() => void run('google', auth.signInWithGoogle)}
+                    disabled={!!busy}
+                    accessibilityRole="button">
+                    {busy === 'google' ? <ActivityIndicator /> : <Ionicons name="logo-google" size={20} color="#ea4335" />}
+                    <Text style={styles.providerText}>Continue with Google</Text>
+                  </Pressable>
+                )}
 
-                <View style={styles.divider}>
-                  <View style={styles.rule} />
-                  <Text style={styles.or}>or use email</Text>
-                  <View style={styles.rule} />
-                </View>
+                {(auth.googleEnabled || auth.appleAvailable) && (
+                  <View style={styles.divider}>
+                    <View style={styles.rule} />
+                    <Text style={styles.or}>or use email</Text>
+                    <View style={styles.rule} />
+                  </View>
+                )}
 
                 <TextInput
                   value={email}
