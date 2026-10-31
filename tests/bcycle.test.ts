@@ -1,8 +1,9 @@
+/// <reference types="node" />
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { feedUrls, mergeStations } from '../lib/bcycle';
-import { distanceMeters, formatDistance } from '../lib/geo';
+import { feedUrls, mergeStations } from '../src/lib/bcycle';
+import { distanceMeters, formatDistance } from '../src/lib/geo';
 
 test('finds station feeds in GBFS v1 (language-keyed) and v2+ shapes', () => {
   const v1 = {

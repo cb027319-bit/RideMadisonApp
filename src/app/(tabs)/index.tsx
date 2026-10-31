@@ -9,7 +9,7 @@ import { COLORS, INITIAL_REGION } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { bboxIntersects, pointInBBox, regionToBBox, type Region } from '@/lib/geo';
 import { PATH_META, PLACE_META } from '@/lib/labels';
-import type { PlaceKind } from '@/lib/osm';
+import type { Place, PlaceKind } from '@/lib/osm';
 
 type LayerId = 'paths' | 'bcycle' | PlaceKind;
 
@@ -30,7 +30,7 @@ const MAX_DENSE_MARKERS = 250;
 
 export default function MapScreen() {
   const {
-    paths, places, stations, pathsState, placesState, stationsState, offlineCopy,
+    paths, places, stations, pathsState, placesState, stationsState, stationsUpdatedAt, offlineCopy,
     location, selection, select, focusRequest, refreshAll,
   } = useData();
   const mapRef = useRef<MapView>(null);
@@ -69,27 +69,30 @@ export default function MapScreen() {
   }, [pathLines, view, zoomedOut, layers.paths]);
 
   const visiblePlaces = useMemo(() => {
+    const out: Place[] = [];
     let dense = 0;
-    return places.filter((p) => {
-      if (!layers[p.kind]) return false;
+    for (const p of places) {
+      if (!layers[p.kind]) continue;
       const isDense = p.kind === 'parking' || p.kind === 'water';
-      if (isDense && !showDense) return false;
-      if (!pointInBBox(p.lat, p.lon, view)) return false;
+      if (isDense && (!showDense || dense >= MAX_DENSE_MARKERS)) continue;
+      if (!pointInBBox(p.lat, p.lon, view)) continue;
       if (isDense) dense += 1;
-      return !isDense || dense <= MAX_DENSE_MARKERS;
-    });
+      out.push(p);
+    }
+    return out;
   }, [places, layers, showDense, view]);
 
   const visibleStations = layers.bcycle ? stations.filter((s) => pointInBBox(s.lat, s.lon, view)) : [];
 
   // Let custom pins draw (icon font + layout) before freezing them as images;
   // freezing too early leaves blank pins on some Android devices.
-  const [trackPins, setTrackPins] = useState(true);
+  const pinsKey = `${visiblePlaces.length}:${stationsUpdatedAt ?? 0}`;
+  const [settledPinsKey, setSettledPinsKey] = useState('');
+  const trackPins = settledPinsKey !== pinsKey;
   useEffect(() => {
-    setTrackPins(true);
-    const t = setTimeout(() => setTrackPins(false), 1000);
+    const t = setTimeout(() => setSettledPinsKey(pinsKey), 1000);
     return () => clearTimeout(t);
-  }, [visiblePlaces.length, stations]);
+  }, [pinsKey]);
 
   const onMapPress = (e: MapPressEvent) => {
     // iOS also reports marker taps here; only clear on taps on empty map.
@@ -120,7 +123,7 @@ export default function MapScreen() {
         onPress={onMapPress}
         showsUserLocation
         showsMyLocationButton={false}
-        showsPointsOfInterest={false}
+        showsPointsOfInterests={false}
         toolbarEnabled={false}>
         {visibleLines.map(({ path, coords }) => (
           <Polyline

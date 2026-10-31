@@ -1,7 +1,7 @@
 # Ride Madison
 
 Free bike map for Madison, WI and nearby communities (Middleton, Verona, Fitchburg,
-McFarland, Monona, Sun Prairie, Waunakee). Built with Expo / React Native for iPhone and Android.
+McFarland, Monona, Sun Prairie, Waunakee). Built with Expo (SDK 58) / React Native for iPhone and Android.
 
 ## What's in this first build (map core)
 
@@ -20,7 +20,7 @@ No backend, no API keys, no accounts yet.
 
 ## Run it on your phone (about 5 minutes)
 
-1. Install **Node.js 20+** on your computer (nodejs.org).
+1. Install **Node.js (LTS)** on your computer (nodejs.org).
 2. Install the **Expo Go** app on your phone (App Store / Google Play).
 3. In a terminal:
 
@@ -46,14 +46,14 @@ npm run lint       # ESLint
 
 | Path | What |
 |---|---|
-| `app/(tabs)/index.tsx` | Map screen: layers, pins, path lines, detail card |
-| `app/(tabs)/nearby.tsx` | Nearby list |
-| `app/(tabs)/about.tsx` | Map key, data refresh, attribution |
-| `lib/osm.ts` | Overpass queries + parsing for paths and places |
-| `lib/bcycle.ts` | BCycle GBFS feed |
-| `lib/data.tsx` | Shared state: data loading, live refresh, location, selection |
-| `lib/cache.ts` | Saved copies on the phone (offline fallback) |
-| `lib/config.ts` | Coverage area, colors, refresh intervals |
+| `src/app/(tabs)/index.tsx` | Map screen: layers, pins, path lines, detail card |
+| `src/app/(tabs)/nearby.tsx` | Nearby list |
+| `src/app/(tabs)/about.tsx` | Map key, data refresh, attribution |
+| `src/lib/osm.ts` | Overpass queries + parsing for paths and places |
+| `src/lib/bcycle.ts` | BCycle GBFS feed |
+| `src/lib/data.tsx` | Shared state: data loading, live refresh, location, selection |
+| `src/lib/cache.ts` | Saved copies on the phone (offline fallback) |
+| `src/lib/config.ts` | Coverage area, colors, refresh intervals |
 
 ## Roadmap (next milestones)
 

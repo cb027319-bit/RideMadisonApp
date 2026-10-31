@@ -44,19 +44,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [paths, setPaths] = useState<BikePath[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [stations, setStations] = useState<BCycleStation[]>([]);
-  const [pathsState, setPathsState] = useState<LoadState>('idle');
-  const [placesState, setPlacesState] = useState<LoadState>('idle');
-  const [stationsState, setStationsState] = useState<LoadState>('idle');
+  const [pathsState, setPathsState] = useState<LoadState>('loading');
+  const [placesState, setPlacesState] = useState<LoadState>('loading');
+  const [stationsState, setStationsState] = useState<LoadState>('loading');
   const [stationsUpdatedAt, setStationsUpdatedAt] = useState<number>();
   const [offlineCopy, setOfflineCopy] = useState(false);
   const [location, setLocation] = useState<DataState['location']>(null);
   const [locationDenied, setLocationDenied] = useState(false);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const [rawSelection, setSelection] = useState<Selection | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
 
   const loadOsm = useCallback(async (force: boolean) => {
-    setPathsState((s) => (s === 'ready' ? s : 'loading'));
-    setPlacesState((s) => (s === 'ready' ? s : 'loading'));
     // Places first: small and quick, so pins appear before the path network.
     const placesP = cached('places:v1', CACHE_TTL.places, fetchPlaces, { force })
       .then((r) => {
@@ -76,9 +74,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshStations = useCallback(async () => {
-    setStationsState((s) => (s === 'ready' ? s : 'loading'));
     try {
-      setStations(await fetchBCycle());
+      const data = await fetchBCycle();
+      setStations(data);
       setStationsUpdatedAt(Date.now());
       setStationsState('ready');
     } catch {
@@ -88,13 +86,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refreshAll = useCallback(async () => {
     setOfflineCopy(false);
+    setPathsState((s) => (s === 'ready' ? s : 'loading'));
+    setPlacesState((s) => (s === 'ready' ? s : 'loading'));
+    setStationsState((s) => (s === 'ready' ? s : 'loading'));
     await Promise.all([loadOsm(true), refreshStations()]);
   }, [loadOsm, refreshStations]);
 
-  // Initial load.
+  // Initial load (deferred one tick so it starts after the first render).
   useEffect(() => {
-    void loadOsm(false);
-    void refreshStations();
+    const t = setTimeout(() => {
+      void loadOsm(false);
+      void refreshStations();
+    }, 0);
+    return () => clearTimeout(t);
   }, [loadOsm, refreshStations]);
 
   // Live BCycle counts while the app is in the foreground.
@@ -144,14 +148,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setFocusRequest((n) => n + 1);
   }, []);
 
-  // Keep the selected station's live counts current.
-  useEffect(() => {
-    setSelection((sel) => {
-      if (sel?.type !== 'station') return sel;
-      const updated = stations.find((s) => s.id === sel.item.id);
-      return updated ? { type: 'station', item: updated } : sel;
-    });
-  }, [stations]);
+  // Show the selected station with its latest live counts.
+  const selection = useMemo<Selection | null>(() => {
+    if (rawSelection?.type !== 'station') return rawSelection;
+    const live = stations.find((s) => s.id === rawSelection.item.id);
+    return live ? { type: 'station', item: live } : rawSelection;
+  }, [rawSelection, stations]);
 
   const value = useMemo<DataState>(
     () => ({

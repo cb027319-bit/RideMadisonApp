@@ -1,8 +1,9 @@
+/// <reference types="node" />
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { simplify } from '../lib/geo';
-import { classifyWay, parsePaths, parsePlaces, pathsQuery, placesQuery, type OverpassElement } from '../lib/osm';
+import { simplify } from '../src/lib/geo';
+import { classifyWay, parsePaths, parsePlaces, pathsQuery, placesQuery, type OverpassElement } from '../src/lib/osm';
 
 test('classifies off-street paths by surface', () => {
   assert.equal(classifyWay({ highway: 'cycleway' }), 'path_paved');
