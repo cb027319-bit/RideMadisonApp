@@ -3,13 +3,14 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Keyboard, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  ActivityIndicator, Alert, FlatList, Keyboard, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PathLines } from '@/components/path-lines';
 import { COLORS, INITIAL_REGION } from '@/lib/config';
+import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/data';
 import { formatDistance, type Region } from '@/lib/geo';
 import { useRoute, type SavedRide } from '@/lib/route';
@@ -23,6 +24,7 @@ const ROUTE_COLOR = '#7c3aed';
 export default function RouteScreen() {
   const { paths, location } = useData();
   const route = useRoute();
+  const auth = useAuth();
   const mapRef = useRef<MapView>(null);
   const searchRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
@@ -295,7 +297,13 @@ export default function RouteScreen() {
               {hasRoute && (
                 <>
                   <Action icon="navigate" label="Go (Google Maps)" primary onPress={() => void Linking.openURL(googleMapsUrl(route.waypoints))} />
-                  <Action icon="bookmark-outline" label="Save" onPress={() => setShowSave(true)} />
+                  <Action
+                    icon="bookmark-outline"
+                    label="Save"
+                    onPress={() => {
+                      if (auth.requireAccount('Create a free account to save this ride and find it on any phone.')) setShowSave(true);
+                    }}
+                  />
                   <Action icon="share-outline" label="GPX" onPress={() => void shareGpx()} />
                 </>
               )}
@@ -316,13 +324,18 @@ export default function RouteScreen() {
         defaultName={rideName(route.stops.map((s) => s.label))}
         onCancel={() => setShowSave(false)}
         onSave={async (name) => {
-          await route.saveRide(name);
-          setShowSave(false);
+          try {
+            await route.saveRide(name);
+            setShowSave(false);
+          } catch (e) {
+            Alert.alert('Not saved', e instanceof Error ? e.message : 'Please try again.');
+          }
         }}
       />
       <SavedRidesModal
         visible={showSaved}
         rides={route.savedRides}
+        signedOut={auth.configured && !auth.session}
         onClose={() => setShowSaved(false)}
         onOpen={(r) => {
           route.loadRide(r);
@@ -440,8 +453,8 @@ function SaveModal({ visible, defaultName, onCancel, onSave }: {
   );
 }
 
-function SavedRidesModal({ visible, rides, onClose, onOpen, onDelete }: {
-  visible: boolean; rides: SavedRide[]; onClose: () => void; onOpen: (r: SavedRide) => void; onDelete: (id: string) => void;
+function SavedRidesModal({ visible, rides, signedOut, onClose, onOpen, onDelete }: {
+  visible: boolean; rides: SavedRide[]; signedOut: boolean; onClose: () => void; onOpen: (r: SavedRide) => void; onDelete: (id: string) => void;
 }) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -454,7 +467,11 @@ function SavedRidesModal({ visible, rides, onClose, onOpen, onDelete }: {
           data={rides}
           keyExtractor={(r) => r.id}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
-          ListEmptyComponent={<Text style={styles.resultEmpty}>No saved rides yet. Plan a route and tap Save.</Text>}
+          ListEmptyComponent={
+            <Text style={styles.resultEmpty}>
+              {signedOut ? 'Sign in to see rides saved to your account.' : 'No saved rides yet. Plan a route and tap Save.'}
+            </Text>
+          }
           renderItem={({ item }) => (
             <View style={styles.savedRow}>
               <Pressable style={{ flex: 1 }} onPress={() => onOpen(item)}>

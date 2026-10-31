@@ -5,9 +5,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { useAuth } from './auth';
 import { useData } from './data';
 import { profileFor, usePrefs } from './prefs';
 import { simplify, type LonLat } from './geo';
+import { supabase } from './supabase';
 import { fetchRoute, reverseLabel, type LatLon, type RouteProfile, type RouteResult } from './routing';
 
 export interface Stop extends LatLon {
@@ -69,6 +71,8 @@ const newId = () => `s${Date.now().toString(36)}${nextId++}`;
 export function RouteProvider({ children }: { children: ReactNode }) {
   const { location } = useData();
   const { prefs } = usePrefs();
+  const { configured: accounts, session } = useAuth();
+  const userId = session?.user.id;
   const [stops, setStops] = useState<Stop[]>([]);
   const [startFromMe, setStartFromMe] = useState(true);
   // Default comes from onboarding ("how comfortable in traffic"); a choice made
@@ -84,14 +88,42 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   const [focusRequest, setFocusRequest] = useState(0);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Load saved rides once.
+  // Saved rides: in your account when accounts are on, otherwise on this phone.
   useEffect(() => {
+    let cancelled = false;
+    if (accounts && supabase) {
+      if (!userId) {
+        const t = setTimeout(() => setSavedRides([]), 0);
+        return () => clearTimeout(t);
+      }
+      supabase
+        .from('saved_rides')
+        .select('id, name, ride, created_at')
+        .order('created_at', { ascending: false })
+        .then(({ data }) => {
+          if (cancelled || !data) return;
+          setSavedRides(
+            data.map((row) => ({
+              ...(row.ride as Omit<SavedRide, 'id' | 'name' | 'createdAt'>),
+              id: row.id as string,
+              name: row.name as string,
+              createdAt: new Date(row.created_at as string).getTime(),
+            })),
+          );
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     AsyncStorage.getItem(SAVED_KEY)
       .then((raw) => {
-        if (raw) setSavedRides(JSON.parse(raw) as SavedRide[]);
+        if (raw && !cancelled) setSavedRides(JSON.parse(raw) as SavedRide[]);
       })
       .catch(() => {});
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts, userId]);
 
   const usingMyLocation = startFromMe && location != null;
 
@@ -218,9 +250,20 @@ export function RouteProvider({ children }: { children: ReactNode }) {
         stops: allStops,
         result: { ...result, coords, elevations },
       };
+      if (accounts && supabase && userId) {
+        const { id: _localId, name: rideName, createdAt: _c, ...rest } = ride;
+        const { data, error } = await supabase
+          .from('saved_rides')
+          .insert({ name: rideName, ride: rest })
+          .select('id, created_at')
+          .single();
+        if (error) throw new Error('Could not save the ride. Check your connection and try again.');
+        setSavedRides((rs) => [{ ...ride, id: data.id as string, createdAt: new Date(data.created_at as string).getTime() }, ...rs]);
+        return;
+      }
       await persist([ride, ...savedRides]);
     },
-    [result, usingMyLocation, location, stops, profile, roundTrip, savedRides, persist],
+    [result, usingMyLocation, location, stops, profile, roundTrip, savedRides, persist, accounts, userId],
   );
 
   const loadRide = useCallback((ride: SavedRide) => {
@@ -233,8 +276,15 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteRide = useCallback(
-    async (id: string) => persist(savedRides.filter((r) => r.id !== id)),
-    [savedRides, persist],
+    async (id: string) => {
+      if (accounts && supabase && userId) {
+        setSavedRides((rs) => rs.filter((r) => r.id !== id));
+        await supabase.from('saved_rides').delete().eq('id', id);
+        return;
+      }
+      await persist(savedRides.filter((r) => r.id !== id));
+    },
+    [savedRides, persist, accounts, userId],
   );
 
   const retry = useCallback(() => setRetryCount((n) => n + 1), []);

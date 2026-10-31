@@ -10,7 +10,8 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "supportsTablet": false,
-      "bundleIdentifier": "com.ridemadison.app"
+      "bundleIdentifier": "com.ridemadison.app",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -41,7 +42,8 @@
           "locationWhenInUsePermission": "Ride Madison uses your location to show nearby bike paths, BCycle stations and shops."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "reactCompiler": true

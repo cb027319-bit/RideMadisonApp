@@ -1,10 +1,11 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { Onboarding } from '@/components/onboarding';
+import { useAuth } from '@/lib/auth';
 import { COLORS } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { PATH_META, PLACE_META } from '@/lib/labels';
@@ -35,6 +36,7 @@ const GUIDES: { title: string; body: string; link?: { label: string; url: string
 export default function AboutScreen() {
   const { refreshAll, paths, places, stations } = useData();
   const { prefs, setPrefs } = usePrefs();
+  const auth = useAuth();
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [openGuide, setOpenGuide] = useState<number | null>(null);
@@ -52,6 +54,47 @@ export default function AboutScreen() {
         Bike paths, live BCycle e-bikes, bike shops, fix-it stations and parking for Madison and nearby
         communities, in one free app.
       </Text>
+
+      {auth.configured && (
+        <>
+          <Text style={styles.h2}>Account</Text>
+          {auth.session ? (
+            <View style={styles.accountBox}>
+              <Text style={styles.prefsText}>{auth.profile?.full_name || 'Rider'}</Text>
+              <Text style={styles.prefsHint}>{auth.session.user.email}</Text>
+              <View style={styles.accountActions}>
+                <Text style={styles.link} onPress={() => auth.openSheet('profile')}>Edit profile</Text>
+                <Text style={styles.link} onPress={() => void auth.signOut()}>Sign out</Text>
+                <Text
+                  style={[styles.link, { color: '#b91c1c' }]}
+                  onPress={() =>
+                    Alert.alert(
+                      'Delete your account?',
+                      'This permanently deletes your profile and saved rides. It cannot be undone.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () =>
+                            void auth.deleteAccount().catch((e: unknown) =>
+                              Alert.alert('Could not delete', e instanceof Error ? e.message : 'Please try again.'),
+                            ),
+                        },
+                      ],
+                    )
+                  }>
+                  Delete account
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Pressable style={styles.signInBtn} onPress={() => auth.openSheet('gate')} accessibilityRole="button">
+              <Text style={styles.buttonText}>Sign in or create a free account</Text>
+            </Pressable>
+          )}
+        </>
+      )}
 
       <Text style={styles.h2}>Your riding</Text>
       <Pressable style={styles.prefsRow} onPress={() => setEditing(true)} accessibilityRole="button">
@@ -134,6 +177,7 @@ export default function AboutScreen() {
         onDone={(p) => {
           setPrefs(p);
           setEditing(false);
+          if (auth.session) void auth.updateProfile({ bike_type: p.bike, comfort: p.comfort }).catch(() => {});
         }}
         onSkip={() => setEditing(false)}
       />
@@ -160,6 +204,9 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   link: { color: COLORS.brand, textDecorationLine: 'underline', fontWeight: '600' },
+  accountBox: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14 },
+  accountActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 18, marginTop: 12 },
+  signInBtn: { backgroundColor: COLORS.brand, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   prefsRow: {
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14,
   },

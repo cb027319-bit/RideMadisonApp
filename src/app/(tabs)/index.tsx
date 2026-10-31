@@ -9,6 +9,7 @@ import { DetailCard, selectionCenter } from '@/components/detail-card';
 import { Onboarding } from '@/components/onboarding';
 import { PathLines } from '@/components/path-lines';
 import { COLORS, INITIAL_REGION, MADISON_CENTER } from '@/lib/config';
+import { useAuth } from '@/lib/auth';
 import { useData, type Selection } from '@/lib/data';
 import { pointInBBox, regionToBBox, type Region } from '@/lib/geo';
 import { PLACE_META } from '@/lib/labels';
@@ -45,6 +46,7 @@ export default function MapScreen() {
   } = useData();
   const { routeTo, requestSearch } = useRoute();
   const { prefs, loaded: prefsLoaded, setPrefs } = usePrefs();
+  const auth = useAuth();
   const [onboardingSkipped, setOnboardingSkipped] = useState(false);
   const mapRef = useRef<MapView>(null);
   const [mapHeight, setMapHeight] = useState(700);
@@ -283,8 +285,11 @@ export default function MapScreen() {
       </View>
 
       <Onboarding
-        visible={prefsLoaded && !prefs && !onboardingSkipped}
-        onDone={setPrefs}
+        visible={prefsLoaded && !prefs && !onboardingSkipped && auth.ready && auth.welcomeHandled && !auth.sheet}
+        onDone={(p) => {
+          setPrefs(p);
+          if (auth.session) void auth.updateProfile({ bike_type: p.bike, comfort: p.comfort }).catch(() => {});
+        }}
         onSkip={() => setOnboardingSkipped(true)}
       />
     </View>
