@@ -85,12 +85,16 @@ export const DEMO_PARTNERS: Partner[] = [
 export async function fetchPartners(force = false): Promise<Partner[]> {
   let live: Partner[] = [];
   if (supabase) {
-    const r = await cached('partners:v1', 60 * 60 * 1000, async () => {
-      const { data, error } = await supabase!.from('partners').select(COLUMNS);
-      if (error) throw new Error(error.message);
-      return (data ?? []) as Partner[];
-    }, { force });
-    live = r.value;
+    try {
+      const r = await cached('partners:v1', 60 * 60 * 1000, async () => {
+        const { data, error } = await supabase!.from('partners').select(COLUMNS);
+        if (error) throw new Error(error.message);
+        return (data ?? []) as Partner[];
+      }, { force });
+      live = r.value;
+    } catch {
+      live = []; // table not set up yet or offline with no saved copy
+    }
   }
   if (live.length === 0 && __DEV__) return DEMO_PARTNERS;
   return live;
