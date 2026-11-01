@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LogoMark } from '@/components/brand';
 import { DetailCard, PartnerMark, selectionCenter } from '@/components/detail-card';
+import { useLaunchDone } from '@/components/launch-screen';
 import { Onboarding } from '@/components/onboarding';
 import { PathLines } from '@/components/path-lines';
 import { BRAND, COLORS, FONT, INITIAL_REGION, MADISON_CENTER } from '@/lib/config';
@@ -57,6 +58,7 @@ export default function MapScreen() {
   const { prefs, loaded: prefsLoaded, setPrefs } = usePrefs();
   const auth = useAuth();
   const [onboardingSkipped, setOnboardingSkipped] = useState(false);
+  const launchDone = useLaunchDone();
   const mapRef = useRef<MapView>(null);
   const [mapHeight, setMapHeight] = useState(700);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
@@ -424,7 +426,7 @@ export default function MapScreen() {
       </View>
 
       <Onboarding
-        visible={prefsLoaded && !prefs && !onboardingSkipped && auth.ready && auth.welcomeHandled && !auth.sheet}
+        visible={launchDone && prefsLoaded && !prefs && !onboardingSkipped && auth.ready && auth.welcomeHandled && !auth.sheet}
         onDone={(p) => {
           setPrefs(p);
           if (auth.session) void auth.updateProfile({ bike_type: p.bike, comfort: p.comfort }).catch(() => {});

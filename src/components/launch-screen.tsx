@@ -2,12 +2,16 @@
 // animates in the logo, RideMadison™ wordmark and tagline, then fades into the
 // app. Tap anywhere to skip.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, createContext, useContext } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LogoMark, Wordmark } from '@/components/brand';
 import { BRAND, FONT } from '@/lib/config';
+
+/** True once the opening screen has finished, so other overlays wait for it. */
+export const LaunchDoneContext = createContext(false);
+export const useLaunchDone = () => useContext(LaunchDoneContext);
 
 export const TAGLINE = 'The free local riding guide for Greater Madison';
 const HOLD_MS = 1400;
