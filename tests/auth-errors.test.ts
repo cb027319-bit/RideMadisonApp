@@ -36,3 +36,10 @@ test('resend cooldown counts down from 30 s', () => {
   assert.equal(resendSecondsLeft(0, 30_000), 0);
   assert.equal(resendSecondsLeft(0, 90_000), 0);
 });
+
+test('password sign-in errors are plain and specific', () => {
+  assert.match(friendlyAuthError('Invalid login credentials', 'signin'), /don’t match/);
+  assert.match(friendlyAuthError('User already registered', 'signup'), /already have an account/);
+  assert.match(friendlyAuthError('Password should be at least 6 characters', 'signup'), /at least 8 characters/);
+  assert.match(friendlyAuthError('Email not confirmed', 'signin'), /confirmation is still turned on/);
+});

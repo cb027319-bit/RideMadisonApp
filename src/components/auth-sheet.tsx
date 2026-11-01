@@ -1,4 +1,4 @@
-// Sign-up / sign-in sheet: Apple, Google, or an emailed 6-digit code, then a
+// Sign-up / sign-in sheet: Apple, Google, or email + password (no emailed code), then a
 // short, skippable profile step (optional name and phone, email opt-in).
 // Shown on first open (skippable) and whenever an account-only feature needs it.
 
@@ -13,14 +13,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppIcon, Wordmark } from '@/components/brand';
 import { useAuth } from '@/lib/auth';
-import { resendSecondsLeft } from '@/lib/auth-errors';
+import { MIN_PASSWORD, resendSecondsLeft } from '@/lib/auth-errors';
 import { FONT } from '@/lib/config';
 import { formatPhone, isValidEmail, normalizePhone } from '@/lib/contact';
 import { useT } from '@/lib/i18n';
 import { usePrefs } from '@/lib/prefs';
 import { makeStyles, useTheme } from '@/lib/theme';
 
-type Step = 'choose' | 'code' | 'profile';
+type Step = 'choose' | 'reset' | 'profile';
+type EmailMode = 'signup' | 'signin';
 
 export function AuthSheet() {
   const auth = useAuth();
@@ -39,6 +40,9 @@ function SheetBody() {
   const mode = auth.sheet!.mode;
   const [step, setStep] = useState<Step>(mode === 'profile' ? 'profile' : 'choose');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailMode, setEmailMode] = useState<EmailMode>('signup');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,11 +79,17 @@ function SheetBody() {
     }
   };
 
+  const canSubmit = isValidEmail(email) && password.length >= (emailMode === 'signup' ? MIN_PASSWORD : 1);
+  const submitEmail = () =>
+    void run('email', () =>
+      emailMode === 'signup' ? auth.signUpWithPassword(email, password) : auth.signInWithPassword(email, password),
+    );
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.topBar}>
-          {current === 'code' ? (
+          {current === 'reset' ? (
             <Pressable
               onPress={() => {
                 setError(null);
@@ -159,6 +169,23 @@ function SheetBody() {
                   </View>
                 )}
 
+                <View style={styles.segment} accessibilityRole="radiogroup" accessibilityLabel={t('more.auth.modeA11y')}>
+                  {(['signup', 'signin'] as EmailMode[]).map((m) => (
+                    <Pressable
+                      key={m}
+                      style={[styles.segmentBtn, emailMode === m && styles.segmentOn]}
+                      onPress={() => {
+                        setEmailMode(m);
+                        setError(null);
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: emailMode === m }}>
+                      <Text style={[styles.segmentText, emailMode === m && styles.segmentTextOn]}>
+                        {t(m === 'signup' ? 'more.auth.tabSignUp' : 'more.auth.tabSignIn')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
@@ -169,26 +196,70 @@ function SheetBody() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoComplete="email"
-                  textContentType="emailAddress"
+                  textContentType="username"
                   accessibilityLabel={t('more.auth.emailLabel')}
                   editable={!busy}
                 />
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder={
+                      emailMode === 'signup'
+                        ? t('more.auth.passwordNewPlaceholder', { n: MIN_PASSWORD })
+                        : t('more.auth.passwordPlaceholder')
+                    }
+                    placeholderTextColor={c.textMuted}
+                    keyboardAppearance={c.dark ? 'dark' : 'light'}
+                    style={[styles.input, styles.passwordInput]}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete={emailMode === 'signup' ? 'new-password' : 'current-password'}
+                    textContentType={emailMode === 'signup' ? 'newPassword' : 'password'}
+                    passwordRules={emailMode === 'signup' ? `minlength: ${MIN_PASSWORD};` : undefined}
+                    accessibilityLabel={t('more.auth.password')}
+                    editable={!busy}
+                    returnKeyType="go"
+                    onSubmitEditing={() => {
+                      if (canSubmit) submitEmail();
+                    }}
+                  />
+                  <Pressable
+                    style={styles.eyeBtn}
+                    onPress={() => setShowPassword((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(showPassword ? 'more.auth.hidePassword' : 'more.auth.showPassword')}>
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={c.textMuted} />
+                  </Pressable>
+                </View>
                 <Pressable
-                  style={[styles.primaryBtn, (!isValidEmail(email) || !!busy) && styles.disabled]}
-                  disabled={!isValidEmail(email) || !!busy}
-                  onPress={() =>
-                    void run('email', async () => {
-                      await auth.sendEmailCode(email);
-                      setCode('');
-                      setCodeSentAt(Date.now());
-                      setNow(Date.now());
-                      setStep('code');
-                    })
-                  }
+                  style={[styles.primaryBtn, (!canSubmit || !!busy) && styles.disabled]}
+                  disabled={!canSubmit || !!busy}
+                  onPress={submitEmail}
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: !isValidEmail(email) || !!busy, busy: busy === 'email' }}>
-                  {busy === 'email' ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.primaryText}>{t('more.auth.emailMe')}</Text>}
+                  accessibilityState={{ disabled: !canSubmit || !!busy, busy: busy === 'email' }}>
+                  {busy === 'email' ? (
+                    <ActivityIndicator color={c.onPrimary} />
+                  ) : (
+                    <Text style={styles.primaryText}>
+                      {t(emailMode === 'signup' ? 'more.auth.createAccount' : 'more.auth.signIn')}
+                    </Text>
+                  )}
                 </Pressable>
+                {emailMode === 'signin' && (
+                  <Pressable
+                    style={styles.resendBtn}
+                    onPress={() => {
+                      setError(null);
+                      setCode('');
+                      setPassword('');
+                      setStep('reset');
+                    }}
+                    accessibilityRole="button">
+                    <Text style={styles.linkCenter}>{t('more.auth.forgot')}</Text>
+                  </Pressable>
+                )}
               </View>
               {error && <Text style={styles.error} accessibilityLiveRegion="polite" accessibilityRole="alert">{error}</Text>}
               {mode === 'welcome' && (
@@ -213,52 +284,87 @@ function SheetBody() {
             </>
           )}
 
-          {current === 'code' && (
+          {current === 'reset' && (
             <>
-              <Text style={styles.h1} accessibilityRole="header">{t('more.auth.checkEmail')}</Text>
-              <Text style={styles.sub}>{t('more.auth.enterCode', { email: email.trim() })}</Text>
-              <TextInput
-                value={code}
-                onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
-                placeholder="123456"
-                placeholderTextColor={c.textMuted}
-                keyboardAppearance={c.dark ? 'dark' : 'light'}
-                style={[styles.input, styles.codeInput]}
-                keyboardType="number-pad"
-                autoComplete="one-time-code"
-                textContentType="oneTimeCode"
-                autoFocus
-                accessibilityLabel={t('more.auth.codeLabel')}
-              />
-              <Pressable
-                style={[styles.primaryBtn, (code.length !== 6 || !!busy) && styles.disabled]}
-                disabled={code.length !== 6 || !!busy}
-                onPress={() => void run('verify', () => auth.verifyEmailCode(email, code))}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: code.length !== 6 || !!busy, busy: busy === 'verify' }}>
-                {busy === 'verify' ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.primaryText}>{t('common.continue')}</Text>}
-              </Pressable>
+              <Text style={styles.h1} accessibilityRole="header">{t('more.auth.resetTitle')}</Text>
+              <Text style={styles.sub}>
+                {codeSentAt ? t('more.auth.resetSub', { email: email.trim() }) : t('more.auth.resetSubNoEmail')}
+              </Text>
+              <View style={styles.buttons}>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder={t('more.auth.emailPlaceholder')}
+                  placeholderTextColor={c.textMuted}
+                  keyboardAppearance={c.dark ? 'dark' : 'light'}
+                  style={styles.input}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  accessibilityLabel={t('more.auth.emailLabel')}
+                  editable={!busy}
+                />
+                <Pressable
+                  onPress={() =>
+                    void run('resend', async () => {
+                      await auth.sendPasswordReset(email);
+                      setCodeSentAt(Date.now());
+                      setNow(Date.now());
+                    })
+                  }
+                  disabled={!isValidEmail(email) || !!busy || resendIn > 0}
+                  style={[styles.secondaryBtn, (!isValidEmail(email) || !!busy || resendIn > 0) && styles.disabled]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !isValidEmail(email) || !!busy || resendIn > 0, busy: busy === 'resend' }}>
+                  <Text style={styles.secondaryText}>
+                    {busy === 'resend'
+                      ? t('more.auth.sending')
+                      : resendIn > 0
+                        ? t('more.auth.resendIn', { n: resendIn })
+                        : codeSentAt
+                          ? t('more.auth.resend')
+                          : t('more.auth.sendCode')}
+                  </Text>
+                </Pressable>
+                {codeSentAt != null && (
+                  <>
+                    <TextInput
+                      value={code}
+                      onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="123456"
+                      placeholderTextColor={c.textMuted}
+                      keyboardAppearance={c.dark ? 'dark' : 'light'}
+                      style={[styles.input, styles.codeInput]}
+                      keyboardType="number-pad"
+                      autoComplete="one-time-code"
+                      textContentType="oneTimeCode"
+                      accessibilityLabel={t('more.auth.codeLabel')}
+                    />
+                    <TextInput
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder={t('more.auth.passwordNewPlaceholder', { n: MIN_PASSWORD })}
+                      placeholderTextColor={c.textMuted}
+                      keyboardAppearance={c.dark ? 'dark' : 'light'}
+                      style={styles.input}
+                      secureTextEntry
+                      autoCapitalize="none"
+                      autoComplete="new-password"
+                      textContentType="newPassword"
+                      accessibilityLabel={t('more.auth.newPassword')}
+                    />
+                    <Pressable
+                      style={[styles.primaryBtn, (code.length !== 6 || password.length < MIN_PASSWORD || !!busy) && styles.disabled]}
+                      disabled={code.length !== 6 || password.length < MIN_PASSWORD || !!busy}
+                      onPress={() => void run('verify', () => auth.resetPassword(email, code, password))}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: code.length !== 6 || password.length < MIN_PASSWORD || !!busy, busy: busy === 'verify' }}>
+                      {busy === 'verify' ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.primaryText}>{t('more.auth.setPassword')}</Text>}
+                    </Pressable>
+                  </>
+                )}
+              </View>
               {error && <Text style={styles.error} accessibilityLiveRegion="polite" accessibilityRole="alert">{error}</Text>}
-              <Pressable
-                onPress={() =>
-                  void run('resend', async () => {
-                    await auth.sendEmailCode(email);
-                    setCodeSentAt(Date.now());
-                    setNow(Date.now());
-                  })
-                }
-                disabled={!!busy || resendIn > 0}
-                style={styles.resendBtn}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !!busy || resendIn > 0, busy: busy === 'resend' }}>
-                <Text style={[styles.linkCenter, (!!busy || resendIn > 0) && { color: c.textMuted }]}>
-                  {busy === 'resend'
-                    ? t('more.auth.sending')
-                    : resendIn > 0
-                      ? t('more.auth.resendIn', { n: resendIn })
-                      : t('more.auth.resend')}
-                </Text>
-              </Pressable>
             </>
           )}
 
@@ -407,7 +513,15 @@ const useStyles = makeStyles((c) => ({
   input: {
     minHeight: 50, borderWidth: 1.5, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14, fontSize: 17, color: c.text,
   },
-  codeInput: { marginTop: 24, fontSize: 28, letterSpacing: 10, textAlign: 'center', minHeight: 60, marginBottom: 12 },
+  segment: { flexDirection: 'row', backgroundColor: c.surfaceAlt, borderRadius: 12, padding: 4, gap: 4 },
+  segmentBtn: { flex: 1, minHeight: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segmentOn: { backgroundColor: c.surface, shadowColor: c.shadow, shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  segmentText: { fontSize: 15, fontFamily: FONT.bold, color: c.textMuted },
+  segmentTextOn: { color: c.text },
+  passwordRow: { justifyContent: 'center' },
+  passwordInput: { paddingRight: 52 },
+  eyeBtn: { position: 'absolute', right: 4, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  codeInput: { marginTop: 16, fontSize: 28, letterSpacing: 10, textAlign: 'center', minHeight: 60, marginBottom: 12 },
   primaryBtn: { minHeight: 50, borderRadius: 12, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
   primaryText: { color: c.onPrimary, fontSize: 17, fontFamily: FONT.black },
   secondaryBtn: {

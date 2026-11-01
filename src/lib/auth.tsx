@@ -37,8 +37,13 @@ interface AuthState {
   closeSheet: () => void;
   /** Returns true if signed in; otherwise opens the sheet with a reason. */
   requireAccount: (reason: string) => boolean;
-  sendEmailCode: (email: string) => Promise<void>;
-  verifyEmailCode: (email: string, code: string) => Promise<void>;
+  /** Create an account with email + password; signs in right away (no emailed code). */
+  signUpWithPassword: (email: string, password: string) => Promise<void>;
+  signInWithPassword: (email: string, password: string) => Promise<void>;
+  /** Forgot password: emails a 6-digit reset code. */
+  sendPasswordReset: (email: string) => Promise<void>;
+  /** Check the reset code and set the new password (signs the rider in). */
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   signInWithGoogle: () => Promise<boolean>;
   signInWithApple: () => Promise<boolean>;
   updateProfile: (fields: Partial<Omit<Profile, 'id'>>) => Promise<void>;
@@ -145,14 +150,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return supabase;
   };
 
-  const sendEmailCode = useCallback(async (email: string) => {
-    const { error } = await client().auth.signInWithOtp({ email: email.trim().toLowerCase(), options: { shouldCreateUser: true } });
+  const signUpWithPassword = useCallback(async (email: string, password: string) => {
+    const { data, error } = await client().auth.signUp({ email: email.trim().toLowerCase(), password });
+    if (error) throw authError(error.message, 'signup');
+    // With "Confirm email" off in Supabase, sign-up returns a session immediately.
+    // If it's still on, there is no session yet: say so plainly instead of failing silently.
+    if (!data.session) throw new Error(t('more.err.confirmOn'));
+  }, []);
+
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    const { error } = await client().auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    if (error) throw authError(error.message, 'signin');
+  }, []);
+
+  const sendPasswordReset = useCallback(async (email: string) => {
+    const { error } = await client().auth.resetPasswordForEmail(email.trim().toLowerCase());
     if (error) throw authError(error.message, 'email');
   }, []);
 
-  const verifyEmailCode = useCallback(async (email: string, code: string) => {
-    const { error } = await client().auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: 'email' });
+  const resetPassword = useCallback(async (email: string, code: string, newPassword: string) => {
+    const { error } = await client().auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: 'recovery' });
     if (error) throw authError(error.message, 'code');
+    const { error: e2 } = await client().auth.updateUser({ password: newPassword });
+    if (e2) throw authError(e2.message, 'signup');
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
@@ -233,11 +253,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       configured: accountsConfigured, ready, session, profile, appleAvailable, googleEnabled, sheet, welcomeHandled,
-      openSheet, closeSheet, requireAccount, sendEmailCode, verifyEmailCode, signInWithGoogle, signInWithApple,
+      openSheet, closeSheet, requireAccount, signUpWithPassword, signInWithPassword, sendPasswordReset, resetPassword, signInWithGoogle, signInWithApple,
       updateProfile, signOut, deleteAccount,
     }),
     [ready, session, profile, appleAvailable, googleEnabled, sheet, welcomeHandled, openSheet, closeSheet, requireAccount,
-      sendEmailCode, verifyEmailCode, signInWithGoogle, signInWithApple, updateProfile, signOut, deleteAccount],
+      signUpWithPassword, signInWithPassword, sendPasswordReset, resetPassword, signInWithGoogle, signInWithApple, updateProfile, signOut, deleteAccount],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
