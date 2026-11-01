@@ -5,6 +5,7 @@
 // then added by the screen from our trail data.
 
 import { distanceMeters, formatDistance } from './geo';
+import { t } from './i18n';
 import { wayNameAt, type LatLon, type RouteCue, type WaySpan } from './routing';
 
 export type ManeuverType =
@@ -251,26 +252,27 @@ export function nextManeuver(maneuvers: Maneuver[], along: number): { current?: 
   return { current: maneuvers[i], then: i >= 0 ? maneuvers[i + 1] : undefined };
 }
 
-const VERB: Record<ManeuverType, string> = {
-  'slight-left': 'Keep left',
-  left: 'Turn left',
-  'sharp-left': 'Sharp left',
-  'slight-right': 'Keep right',
-  right: 'Turn right',
-  'sharp-right': 'Sharp right',
-  uturn: 'Make a U-turn',
-  arrive: 'Arrive at your destination',
+const VERB_KEY: Record<ManeuverType, string> = {
+  'slight-left': 'route.nav.slightLeft',
+  left: 'route.nav.left',
+  'sharp-left': 'route.nav.sharpLeft',
+  'slight-right': 'route.nav.slightRight',
+  right: 'route.nav.right',
+  'sharp-right': 'route.nav.sharpRight',
+  uturn: 'route.nav.uturn',
+  arrive: 'route.nav.arrive',
 };
 
-const ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
-
+/** Shown and spoken in the current language ("Turn left onto…" / "Gira a la izquierda en…"). */
 export function instruction(m: Maneuver): string {
-  if (m.type === 'arrive') return VERB.arrive;
+  if (m.type === 'arrive') return t(VERB_KEY.arrive);
   if (m.roundabout) {
-    const exit = m.exit && ORDINAL[m.exit] ? `take the ${ORDINAL[m.exit]} exit` : 'take your exit';
-    return m.onto ? `At the roundabout, ${exit} onto ${m.onto}` : `At the roundabout, ${exit}`;
+    const ord = m.exit && m.exit >= 1 && m.exit <= 8 ? t(`route.nav.ord${m.exit}`) : null;
+    if (ord) return t(m.onto ? 'route.nav.roundaboutExitOnto' : 'route.nav.roundaboutExit', { ord, name: m.onto });
+    return t(m.onto ? 'route.nav.roundaboutAnyOnto' : 'route.nav.roundaboutAny', { name: m.onto });
   }
-  return m.onto ? `${VERB[m.type]} onto ${m.onto}` : VERB[m.type];
+  const verb = t(VERB_KEY[m.type]);
+  return m.onto ? t('route.nav.onto', { verb, name: m.onto }) : verb;
 }
 
 /** Lowercase the first letter for use mid-sentence ("In 700 feet, turn left"). */
@@ -282,7 +284,7 @@ export function directionsList(maneuvers: Maneuver[]): { maneuver: Maneuver; tex
   return maneuvers.map((m) => {
     const gap = Math.max(0, m.at - prev);
     prev = m.at;
-    return { maneuver: m, text: `In ${formatDistance(gap)} ${lowerFirst(instruction(m))}` };
+    return { maneuver: m, text: t('route.nav.inList', { dist: formatDistance(gap), instr: lowerFirst(instruction(m)) }) };
   });
 }
 
@@ -307,17 +309,17 @@ export function speakDistance(meters: number): string {
   const ft = meters * 3.281;
   if (ft < 1000) {
     const step = ft < 300 ? 50 : 100;
-    return `${Math.max(step, Math.round(ft / step) * step)} feet`;
+    return t('route.nav.feetSpoken', { n: Math.max(step, Math.round(ft / step) * step) });
   }
   const mi = meters / 1609.344;
-  if (mi < 0.3) return 'a quarter mile';
-  if (mi < 0.6) return 'half a mile';
-  return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} miles`;
+  if (mi < 0.3) return t('route.nav.quarterMile');
+  if (mi < 0.6) return t('route.nav.halfMile');
+  return t('route.nav.milesSpoken', { n: mi < 10 ? mi.toFixed(1) : Math.round(mi) });
 }
 
 export function shortDistance(meters: number): string {
   const ft = meters * 3.281;
-  if (ft < 1000) return `${Math.max(10, Math.round(ft / 10) * 10)} ft`;
+  if (ft < 1000) return t('common.feet', { n: Math.max(10, Math.round(ft / 10) * 10) });
   return formatDistance(meters);
 }
 
@@ -333,7 +335,7 @@ export function voicePrompt(m: Maneuver, metersToTurn: number, spoken: Set<strin
   }
   if (metersToTurn <= 250 && metersToTurn > 60 && !spoken.has(key('soon'))) {
     spoken.add(key('soon'));
-    return `In ${speakDistance(metersToTurn)}, ${lowerFirst(instruction(m))}`;
+    return t('route.nav.inSpoken', { dist: speakDistance(metersToTurn), instr: lowerFirst(instruction(m)) });
   }
   return null;
 }

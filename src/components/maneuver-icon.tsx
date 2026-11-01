@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { View } from 'react-native';
 
 import type { ManeuverType } from '@/lib/navigation';
+import { useTheme } from '@/lib/theme';
 
 /** Turn arrow: an up arrow rotated to the turn's direction. */
 const ROTATION: Record<ManeuverType, number> = {
@@ -27,6 +28,7 @@ export function ManeuverIcon({ type, size, color }: { type: ManeuverType; size: 
 
 /** The rider's bike marker: white disc, bike glyph, colored ring and soft halo. */
 export function BikeMarker({ color, size = 44 }: { color: string; size?: number }) {
+  const { c } = useTheme();
   return (
     <View
       style={{
@@ -35,9 +37,9 @@ export function BikeMarker({ color, size = 44 }: { color: string; size?: number 
       }}>
       <View
         style={{
-          width: size, height: size, borderRadius: size / 2, backgroundColor: '#fff', borderWidth: 3, borderColor: color,
+          width: size, height: size, borderRadius: size / 2, backgroundColor: c.dark ? c.surface : '#FFFFFF', borderWidth: 3, borderColor: color,
           alignItems: 'center', justifyContent: 'center',
-          shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 6,
+          shadowColor: c.shadow, shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 6,
         }}>
         <Ionicons name="bicycle" size={size * 0.58} color={color} />
       </View>

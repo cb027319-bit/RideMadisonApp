@@ -3,6 +3,7 @@
 // suggested ride should start from the rider's location.
 
 import { distanceMeters, pointInBBox } from './geo';
+import { t } from './i18n';
 import type { LatLon, RouteProfile, RouteResult } from './routing';
 
 /**
@@ -81,5 +82,5 @@ export function planKey(points: LatLon[], profile: RouteProfile): string {
 
 /** Spoken after a stop is reordered: "Colectivo is now stop 2 of 3". */
 export function movedText(name: string, position: number, count: number): string {
-  return `${name} is now stop ${position} of ${count}`;
+  return t('route.moved', { name, position, count });
 }

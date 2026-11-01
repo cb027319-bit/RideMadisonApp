@@ -1,5 +1,7 @@
 // Small, dependency-free geometry helpers.
 
+import { t } from './i18n';
+
 export type LonLat = [number, number];
 
 export interface Region {
@@ -30,8 +32,8 @@ export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
 
 export function formatDistance(meters: number): string {
   const miles = meters / 1609.344;
-  if (miles < 0.1) return `${Math.round(meters * 3.281)} ft`;
-  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi`;
+  if (miles < 0.1) return t('common.feet', { n: Math.round(meters * 3.281) });
+  return t('common.miles', { n: miles < 10 ? miles.toFixed(1) : Math.round(miles) });
 }
 
 /** Map region -> bbox, optionally padded by a fraction of its size. */
