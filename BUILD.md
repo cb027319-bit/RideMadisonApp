@@ -10,8 +10,8 @@ Run these in Terminal from the RideMadisonApp-main folder. EAS builds in the clo
    `npx eas-cli@latest init`
 3. Give cloud builds your Supabase settings (the same two values that are in `.env.local`):
    ```
-   npx eas-cli@latest env:set --name EXPO_PUBLIC_SUPABASE_URL --value https://fctneqfeioysiwuswsyk.supabase.co --environment production --environment preview --visibility plaintext
-   npx eas-cli@latest env:set --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value <the sb_publishable_ key from .env.local> --environment production --environment preview --visibility plaintext
+   npx eas-cli@latest env:set --name EXPO_PUBLIC_SUPABASE_URL --value https://fctneqfeioysiwuswsyk.supabase.co --environment production --visibility plaintext
+   npx eas-cli@latest env:set --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value <the sb_publishable_ key from .env.local> --environment production --visibility plaintext
    ```
    (The publishable key is meant to ship inside the app; that's why it's plaintext.)
 
