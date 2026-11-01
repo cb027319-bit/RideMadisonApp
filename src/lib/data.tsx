@@ -167,6 +167,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [loadOsm, refreshStations]);
 
+  // Prefetch Eat and Drink in the background ~5 s after the core map data is in,
+  // so those lists are ready by the time a rider opens them.
+  const coreReady = pathsState === 'ready' && placesState === 'ready';
+  const foodPrefetched = useRef(false);
+  useEffect(() => {
+    if (!coreReady || foodPrefetched.current) return;
+    const t = setTimeout(() => {
+      foodPrefetched.current = true;
+      loadFood();
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [coreReady, loadFood]);
+
   // Live BCycle counts while the app is in the foreground.
   const appActive = useRef(true);
   useEffect(() => {

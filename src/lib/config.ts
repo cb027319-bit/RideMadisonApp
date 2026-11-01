@@ -63,13 +63,20 @@ export const COLORS = {
   pathPaved: '#15803d',
   pathUnpaved: '#a16207',
   lane: '#2563eb',
-  bcycle: '#e11d48',
-  shop: '#7c3aed',
-  repair: '#ea580c',
-  parking: '#0284c7',
-  water: '#0891b2',
-  food: '#db2777',
-  drink: '#9333ea',
+  // Pin colours: white icons/text on each pass 4.5:1, and hues are kept apart from route red.
+  bcycle: BRAND.navy, // navy pin + white bike (red is reserved for routes)
+  bcycleEmpty: '#6B7280',
+  shop: '#7c3aed', // violet
+  repair: '#c2410c', // dark orange
+  parking: '#0369a1', // dark sky blue
+  water: '#0e7490', // dark cyan
+  food: '#be185d', // magenta
+  drink: '#b45309', // amber
+  restroom: '#475569', // slate
+  playground: '#0f766e', // teal
+  hiking: '#6B7280', // park paths where bikes aren't allowed
+  partner: BRAND.gold,
+  inactive: '#5F6472', // inactive tab labels and other secondary UI text on white
   park: '#166534',
   text: BRAND.navy,
   muted: BRAND.slate,

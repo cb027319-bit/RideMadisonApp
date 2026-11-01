@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { simplify } from '../src/lib/geo';
-import { classifyWay, foodQuery, parsePaths, parsePlaces, pathsQuery, placesQuery, type OverpassElement } from '../src/lib/osm';
+import {
+  classifyWay, fetchPlaces, foodQuery, MAP_DATA_ERROR, parsePaths, parsePlaces, pathsQuery, placesQuery, type OverpassElement,
+} from '../src/lib/osm';
 
 test('classifies off-street paths by surface', () => {
   assert.equal(classifyWay({ highway: 'cycleway' }), 'path_paved');
@@ -118,4 +120,31 @@ test('food and drink queries are split and well-formed', () => {
   assert.match(d, /bar\|pub\|biergarten/);
   assert.match(d, /brewery/);
   assert.doesNotMatch(d, /restaurant/);
+});
+
+test('restrooms and playgrounds become places; private ones are skipped', () => {
+  const places = parsePlaces({
+    elements: [
+      { type: 'node', id: 20, lat: 43.07, lon: -89.38, tags: { amenity: 'toilets', changing_table: 'yes', wheelchair: 'yes' } },
+      { type: 'node', id: 21, lat: 43.07, lon: -89.38, tags: { amenity: 'toilets', access: 'customers' } },
+      { type: 'way', id: 22, center: { lat: 43.07, lon: -89.38 }, tags: { leisure: 'playground', name: 'Tenney Park Playground' } },
+      { type: 'way', id: 23, center: { lat: 43.07, lon: -89.38 }, tags: { leisure: 'playground', access: 'private' } },
+    ],
+  });
+  assert.deepEqual(places.map((p) => p.kind), ['restroom', 'playground']);
+  assert.deepEqual(places[0].details, ['Changing table', 'Wheelchair accessible']);
+  assert.match(placesQuery(), /amenity"="toilets"/);
+  assert.match(placesQuery(), /leisure"="playground"/);
+});
+
+test('Overpass failures become one plain-language error', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error('ECONNRESET socket hang up');
+  }) as typeof fetch;
+  try {
+    await assert.rejects(fetchPlaces(), (e: Error) => e.message === MAP_DATA_ERROR);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

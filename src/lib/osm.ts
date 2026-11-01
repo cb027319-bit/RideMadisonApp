@@ -1,5 +1,5 @@
 // OpenStreetMap data via the Overpass API: bike paths/lanes and rider places
-// (bike shops, fix-it stations, bike parking, drinking water).
+// (bike shops, fix-it stations, bike parking, drinking water, restrooms, playgrounds).
 // Parsing is pure and unit-tested (see tests/osm.test.ts).
 
 import { COVERAGE_BBOX, OVERPASS_URLS, USER_AGENT } from './config';
@@ -18,7 +18,7 @@ export interface BikePath {
   bbox: BBox;
 }
 
-export type PlaceKind = 'shop' | 'repair' | 'parking' | 'water' | 'food' | 'drink';
+export type PlaceKind = 'shop' | 'repair' | 'parking' | 'water' | 'restroom' | 'playground' | 'food' | 'drink';
 
 export interface Place {
   id: string; // 'osm:node:<id>' / 'osm:way:<id>'
@@ -72,6 +72,8 @@ export function placesQuery(bounds = COVERAGE_BBOX): string {
   nwr["amenity"="bicycle_repair_station"](${b});
   nwr["amenity"="bicycle_parking"](${b});
   node["amenity"="drinking_water"](${b});
+  nwr["amenity"="toilets"]["access"!~"^(private|no|customers)$"](${b});
+  nwr["leisure"="playground"](${b});
 );
 out tags center;`;
 }
@@ -155,6 +157,8 @@ function placeKind(tags: Record<string, string>): PlaceKind | null {
   if (tags.amenity === 'bicycle_repair_station') return 'repair';
   if (tags.amenity === 'bicycle_parking') return 'parking';
   if (tags.amenity === 'drinking_water') return 'water';
+  if (tags.amenity === 'toilets') return 'restroom';
+  if (tags.leisure === 'playground') return 'playground';
   if (['bar', 'pub', 'biergarten'].includes(tags.amenity ?? '') || ['brewery', 'winery', 'distillery'].includes(tags.craft ?? '')) {
     return 'drink';
   }
@@ -201,6 +205,13 @@ function details(kind: PlaceKind, t: Record<string, string>): string[] {
     if (t['service:bicycle:second_hand'] === 'yes') d.push('Used bikes');
   }
   if (kind === 'water' && t.seasonal === 'yes') d.push('Seasonal');
+  if (kind === 'restroom') {
+    if (t.fee === 'yes') d.push('Fee');
+    if (t.changing_table === 'yes') d.push('Changing table');
+    if (t.wheelchair === 'yes') d.push('Wheelchair accessible');
+    if (t.seasonal === 'yes') d.push('Seasonal');
+  }
+  if (kind === 'playground' && t.wheelchair === 'yes') d.push('Wheelchair accessible');
   if (kind === 'food' || kind === 'drink') {
     const type: Record<string, string> = {
       restaurant: 'Restaurant', cafe: 'Café', fast_food: 'Quick bite', ice_cream: 'Ice cream',
@@ -224,7 +235,8 @@ export function parsePlaces(json: { elements?: OverpassElement[] }): Place[] {
     const lat = el.lat ?? el.center?.lat;
     const lon = el.lon ?? el.center?.lon;
     if (lat == null || lon == null) continue;
-    if (kind === 'parking' && tags.access === 'private') continue;
+    if ((kind === 'parking' || kind === 'playground') && tags.access === 'private') continue;
+    if (kind === 'restroom' && ['private', 'no', 'customers'].includes(tags.access ?? '')) continue;
     out.push({
       id: `osm:${el.type}:${el.id}`,
       kind,
@@ -243,12 +255,22 @@ export function parsePlaces(json: { elements?: OverpassElement[] }): Place[] {
 
 // ---------- fetching ----------
 
+/** Plain-language errors shown to riders (raw server details go to the dev console only). */
+export const MAP_DATA_ERROR = "Couldn't load map data. Check your connection and try again.";
+export const MAP_DATA_BUSY = 'Map data servers are busy. Showing your saved copy.';
+
+/** Per-mirror wait: most answers come back in a few seconds; the path network can take longer. */
+export const OVERPASS_TIMEOUT_MS = 20000;
+export const OVERPASS_PATHS_TIMEOUT_MS = 30000;
+
+const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__;
+
 /** Run an Overpass query against the public mirrors (first one that answers wins). */
 export async function overpassQuery(query: string): Promise<{ elements?: unknown[] }> {
   return overpass(query);
 }
 
-async function overpass(query: string, timeoutMs = 60000): Promise<{ elements?: OverpassElement[] }> {
+async function overpass(query: string, timeoutMs = OVERPASS_TIMEOUT_MS): Promise<{ elements?: OverpassElement[] }> {
   const errors: string[] = [];
   for (const url of OVERPASS_URLS) {
     const host = url.split('/')[2];
@@ -280,11 +302,12 @@ async function overpass(query: string, timeoutMs = 60000): Promise<{ elements?: 
       clearTimeout(timer);
     }
   }
-  throw new Error(errors.join(' | '));
+  if (isDev()) console.warn(`Overpass failed: ${errors.join(' | ')}`);
+  throw new Error(MAP_DATA_ERROR);
 }
 
 export async function fetchPaths(): Promise<BikePath[]> {
-  return parsePaths(await overpass(pathsQuery()));
+  return parsePaths(await overpass(pathsQuery(), OVERPASS_PATHS_TIMEOUT_MS));
 }
 
 export async function fetchPlaces(): Promise<Place[]> {
@@ -292,8 +315,11 @@ export async function fetchPlaces(): Promise<Place[]> {
 }
 
 export async function fetchFood(kind: FoodKind): Promise<Place[]> {
-  const list = parsePlaces(await overpass(foodQuery(kind), 30000)).filter((p) => p.kind === kind);
+  const list = parsePlaces(await overpass(foodQuery(kind))).filter((p) => p.kind === kind);
   // Greater Madison always has hundreds of each: an empty answer means something went wrong.
-  if (!list.length) throw new Error('No places came back');
+  if (!list.length) {
+    if (isDev()) console.warn(`Overpass: no ${kind} places came back`);
+    throw new Error(MAP_DATA_ERROR);
+  }
   return list;
 }

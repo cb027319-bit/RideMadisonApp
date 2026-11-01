@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { areaId, parkTrailsQuery, parseParks, parseParkTrails } from '../src/lib/parks';
+import { LINE_STYLE } from '../src/lib/labels';
+import { areaId, parkTrailsQuery, parkTrailStyle, parseParks, parseParkTrails } from '../src/lib/parks';
 
 test('parses state parks and keeps one entry per park name', () => {
   const parks = parseParks({
@@ -41,4 +42,12 @@ test('groups park trails by name with bike access', () => {
   assert.equal(trails[0].surface, 'gravel');
   assert.equal(trails[0].lines.length, 2);
   assert.equal(trails[1].access, 'no_bike');
+});
+
+test('hiking-only park paths look different from unpaved bike trails', () => {
+  assert.equal(parkTrailStyle({ access: 'no_bike' }), LINE_STYLE.hiking);
+  assert.equal(parkTrailStyle({ access: 'unknown' }), LINE_STYLE.parkUnknown);
+  assert.equal(parkTrailStyle({ access: 'bike', surface: 'gravel' }), LINE_STYLE.path_unpaved);
+  assert.equal(parkTrailStyle({ access: 'bike', surface: 'asphalt' }), LINE_STYLE.path_paved);
+  assert.notDeepEqual(LINE_STYLE.hiking, LINE_STYLE.path_unpaved);
 });

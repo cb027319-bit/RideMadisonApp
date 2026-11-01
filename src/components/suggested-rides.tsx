@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { cached } from '@/lib/cache';
-import { BRAND, COLORS, FONT, MADISON_CENTER } from '@/lib/config';
+import { BRAND, COLORS, FONT } from '@/lib/config';
+import { distanceOrigin } from '@/lib/origin';
 import { simplify, type LonLat } from '@/lib/geo';
 import { fetchRoute, formatDuration, metersToFeet, type LatLon, type RouteResult } from '@/lib/routing';
 import {
@@ -64,7 +65,9 @@ export function SuggestedRidesSheet({ visible, location, onClose, onPick, onPrev
     };
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const origin = location ?? MADISON_CENTER;
+  // Outside the Madison area, distances fall back to the Capitol.
+  const distFrom = distanceOrigin(location);
+  const origin = distFrom.origin;
   const measured = useMemo<MeasuredRide[]>(
     () =>
       SUGGESTED_RIDES.map((ride) => {
@@ -95,7 +98,7 @@ export function SuggestedRidesSheet({ visible, location, onClose, onPick, onPrev
           onChange={setType}
         />
         <FilterRow
-          label={location ? 'From you' : 'From the Capitol'}
+          label={distFrom.fromMe ? 'From you' : distFrom.outside ? "From the Capitol (you're outside Madison)" : 'From the Capitol'}
           options={FROM_ME_FILTERS.map((f) => ({ id: f.id, label: f.label }))}
           value={fromMe}
           onChange={setFromMe}

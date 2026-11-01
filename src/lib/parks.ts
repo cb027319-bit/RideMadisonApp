@@ -1,7 +1,8 @@
 // Wisconsin state parks and recreation areas around Madison, with the trails
 // inside each park (loaded when a park is opened). Data: OpenStreetMap.
 
-import { overpassQuery } from './osm';
+import { LINE_STYLE, type LineStyle } from './labels';
+import { overpassQuery, UNPAVED } from './osm';
 import { bboxOf, round5, simplify, type BBox, type LonLat } from './geo';
 import { lineLengthM } from './trails';
 
@@ -155,4 +156,12 @@ export function parkBBoxOf(p: Park, trails: ParkTrail[]): BBox | undefined {
   if (p.bbox) return p.bbox;
   const pts = trails.flatMap((t) => t.lines.flat());
   return pts.length ? bboxOf(pts) : undefined;
+}
+
+/** How a park trail is drawn: bike trails like the main network (paved solid / unpaved dashed),
+ *  hiking-only paths as thin grey dots, unknown access as thin grey dashes. */
+export function parkTrailStyle(t: Pick<ParkTrail, 'access' | 'surface'>): LineStyle {
+  if (t.access === 'no_bike') return LINE_STYLE.hiking;
+  if (t.access === 'unknown') return LINE_STYLE.parkUnknown;
+  return t.surface && UNPAVED.has(t.surface) ? LINE_STYLE.path_unpaved : LINE_STYLE.path_paved;
 }

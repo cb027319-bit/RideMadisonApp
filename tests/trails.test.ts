@@ -4,7 +4,9 @@ import { test } from 'node:test';
 
 import { bboxOf, type LonLat } from '../src/lib/geo';
 import type { BikePath } from '../src/lib/osm';
-import { closestPointOnTrail, groupTrails, nearestPath, rulesFor } from '../src/lib/trails';
+import {
+  closestPointOnTrail, distanceToPathsM, ebikeRule, groupTrails, nearestPath, paidSectionLines, rulesFor, trailsByDistance, verdictFor,
+} from '../src/lib/trails';
 
 function path(id: string, kind: BikePath['kind'], coords: LonLat[], name?: string, surface?: string): BikePath {
   return { id, kind, coords, name, surface, bbox: bboxOf(coords) };
@@ -53,4 +55,37 @@ test('tap picks the nearest path and prefers trails over close lanes', () => {
 test('closest point on a trail', () => {
   const p = closestPointOnTrail([cc1, cc2], { latitude: 43.0, longitude: -89.381 });
   assert.deepEqual(p, { latitude: 43.03, longitude: -89.38 });
+});
+
+test('pass verdicts and class-specific e-bike rules', () => {
+  const cc = rulesFor('Capital City State Trail');
+  assert.equal(verdictFor(cc), 'part');
+  assert.equal(verdictFor(rulesFor('Military Ridge State Trail')), 'pass');
+  assert.equal(verdictFor(undefined), 'free');
+  assert.match(cc!.pass, /^Free in Madison/);
+  assert.equal(ebikeRule(cc, '2'), "Class 2 e-bikes can't use the motor on state trails; pedal only.");
+  assert.match(ebikeRule(cc, '1'), /Class 1/);
+  assert.equal(ebikeRule(cc, null), cc!.ebikes);
+  assert.equal(ebikeRule(cc, 'unsure'), cc!.ebikes);
+  assert.match(ebikeRule(undefined, '2'), /posted signs/);
+});
+
+test('paid section of the Capital City Trail is cut out for highlighting', () => {
+  // Free part east of Nob Hill Rd, paid part west of it
+  const p = path('x', 'path_paved', [[-89.35, 43.03], [-89.36, 43.03], [-89.37, 43.03], [-89.40, 43.02], [-89.45, 43.0]], 'Capital City State Trail');
+  const lines = paidSectionLines([p], rulesFor('Capital City State Trail'));
+  assert.deepEqual(lines, [[[-89.37, 43.03], [-89.40, 43.02], [-89.45, 43.0]]]);
+  assert.deepEqual(paidSectionLines([p], rulesFor('Military Ridge State Trail')), []);
+  assert.deepEqual(paidSectionLines([p], undefined), []);
+});
+
+test('distance to a trail and trails sorted by distance', () => {
+  const d = distanceToPathsM([cc1, cc2], { latitude: 43.031, longitude: -89.39 });
+  assert.ok(d > 100 && d < 120, `got ${d}`);
+  assert.equal(distanceToPathsM([], { latitude: 43, longitude: -89 }), Infinity);
+  const { trails } = groupTrails([cc1, cc2, mr, lane, unnamed]);
+  const pathById = new Map([cc1, cc2, mr, lane, unnamed].map((p) => [p.id, p]));
+  const sorted = trailsByDistance(trails, pathById, { latitude: 43.0, longitude: -89.5 }, 100);
+  // Lanes and unnamed paths are left out; nearest first
+  assert.deepEqual(sorted.map((s) => s.trail.name), ['Military Ridge State Trail', 'Capital City State Trail']);
 });
