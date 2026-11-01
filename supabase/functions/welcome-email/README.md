@@ -20,7 +20,7 @@ Preview: `npx tsx` a script calling `welcomeEmail()` from template.ts, or see th
    - `MAILING_ADDRESS` (optional): a postal address for the footer
 4. **Deploy**: Supabase → Edge Functions → Deploy a new function → Via Editor →
    name it `welcome-email` → replace the sample code with the whole of
-   `dashboard-paste.ts` → Deploy. Keep "Verify JWT" on.
+   `dashboard-paste.ts` → Deploy. Then in the function's Settings, turn OFF "Verify JWT with legacy secret" (projects on the new JWT signing keys need this; the function checks the rider itself).
 5. **Test**: create a new account in the app with an email you can check.
 
 If you edit `template.ts` or `index.ts`, run `node scripts/build-welcome-email.mjs`

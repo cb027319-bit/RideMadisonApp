@@ -36,8 +36,9 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  // Newer projects use sb_secret_/sb_publishable_ keys; older ones JWT keys. Support both.
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SECRET_KEY');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY') || '';
   const resendKey = Deno.env.get('RESEND_API_KEY');
   const from = Deno.env.get('WELCOME_FROM');
   if (!supabaseUrl || !serviceKey) return json({ error: 'Server not configured' }, 500);
@@ -45,14 +46,17 @@ Deno.serve(async (req) => {
   // 1. Who is calling? (their own session token)
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!token) return json({ error: 'Not signed in' }, 401);
-  const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { apikey: anonKey || serviceKey, Authorization: `Bearer ${token}` } });
+  const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { apikey: req.headers.get('apikey') || anonKey || serviceKey, Authorization: `Bearer ${token}` } });
   if (!userRes.ok) return json({ error: 'Not signed in' }, 401);
   const user = (await userRes.json()) as { id: string; email?: string | null };
   if (!user.email) return json({ skipped: 'no email' });
 
   const body = (await req.json().catch(() => ({}))) as { lang?: string };
   const lang: WelcomeLang = body.lang === 'es' ? 'es' : 'en';
-  const admin = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+  // sb_secret_ keys go only in the apikey header; legacy JWT keys also as a Bearer token.
+  const admin: Record<string, string> = serviceKey.startsWith('sb_')
+    ? { apikey: serviceKey, 'Content-Type': 'application/json' }
+    : { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
 
   // 2. Already welcomed?
   const profRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}&select=full_name,welcomed_at`, { headers: admin });
