@@ -1,5 +1,5 @@
 // Branded opening screen: picks up seamlessly from the navy native splash,
-// animates in the logo, RideMadison® wordmark and tagline, then fades into the
+// animates in the logo, RideMadison™ wordmark and tagline, then fades into the
 // app. Tap anywhere to skip.
 
 import { useEffect, useRef, useState, createContext, useContext } from 'react';
