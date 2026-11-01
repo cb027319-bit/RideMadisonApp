@@ -7,6 +7,11 @@ export function openBikeDirections(lat: number, lon: number) {
   void Linking.openURL(url);
 }
 
+/** Bike directions in Apple Maps from the rider's location. */
+export function openAppleBikeDirections(lat: number, lon: number) {
+  void Linking.openURL(`https://maps.apple.com/directions?destination=${lat},${lon}&mode=cycling`);
+}
+
 export function callPhone(phone: string) {
   void Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`);
 }

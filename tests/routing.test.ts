@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
-  brouterUrl, buildGpx, classifyWayTags, parseBreakdown, formatDuration, googleMapsUrl, metersToFeet, parseBRouter, parsePhoton, shortLabel,
+  appleMapsUrl, brouterUrl, buildGpx, classifyWayTags, parseBreakdown, formatDuration, googleMapsUrl, metersToFeet, parseBRouter, parsePhoton, shortLabel,
 } from '../src/lib/routing';
 
 const capitol = { latitude: 43.0747, longitude: -89.3842 };
@@ -89,4 +89,13 @@ test('route breakdown by way type and surface', () => {
   assert.equal(b.unpaved, 0.1);
   assert.equal(parseBreakdown(undefined), undefined);
   assert.equal(classifyWayTags({ highway: 'primary' }), 'road');
+});
+
+test('Apple Maps hand-off uses cycling mode and waypoints', () => {
+  const url = appleMapsUrl([capitol, unionSouth, capitol]);
+  assert.match(url, /^https:\/\/maps\.apple\.com\/directions\?/);
+  assert.match(url, /source=43\.074700,-89\.384200/);
+  assert.match(url, /destination=43\.074700,-89\.384200/);
+  assert.match(url, /mode=cycling/);
+  assert.match(url, /waypoint=43\.071900,-89\.408100/);
 });

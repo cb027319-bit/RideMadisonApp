@@ -3,7 +3,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Keyboard, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  ActivityIndicator, Alert, FlatList, Keyboard, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +19,7 @@ import { useRoute, type SavedRide } from '@/lib/route';
 import { useTrip } from '@/lib/trip';
 import { router } from 'expo-router';
 import {
-  buildGpx, formatDuration, googleMapsUrl, metersToFeet, PROFILE_META, searchPlaces, type PlaceResult, type RouteBreakdown,
+  appleMapsUrl, buildGpx, formatDuration, googleMapsUrl, metersToFeet, PROFILE_META, searchPlaces, type PlaceResult, type RouteBreakdown,
   type RouteProfile,
 } from '@/lib/routing';
 
@@ -335,6 +335,9 @@ export default function RouteScreen() {
                     }}
                   />
                   <Action icon="share-outline" label="GPX" onPress={() => void shareGpx()} />
+                  {Platform.OS === 'ios' && (
+                    <Action icon="logo-apple" label="Apple Maps" onPress={() => void Linking.openURL(appleMapsUrl(route.waypoints))} />
+                  )}
                   <Action icon="logo-google" label="Google Maps" onPress={() => void Linking.openURL(googleMapsUrl(route.waypoints))} />
                 </>
               )}

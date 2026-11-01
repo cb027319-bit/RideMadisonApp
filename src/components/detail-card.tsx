@@ -1,13 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import { useEffect } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { COLORS } from '@/lib/config';
 import type { Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { PATH_META, PLACE_META, timeAgo } from '@/lib/labels';
-import { callPhone, openBikeDirections, openWebsite } from '@/lib/links';
+import { callPhone, openAppleBikeDirections, openBikeDirections, openWebsite } from '@/lib/links';
 import type { ParkTrail } from '@/lib/parks';
 import { CATEGORY_LABEL, initials, trackPartner, type Partner } from '@/lib/partners';
 import { TRAIL_PASS_URL, type Trail } from '@/lib/trails';
@@ -117,6 +117,16 @@ export function DetailCard({
             onPress={() => {
               if (partner) trackPartner(partner, 'website', 'card');
               openWebsite(selection.item.website!);
+            }}
+          />
+        )}
+        {selection.type !== 'trail' && Platform.OS === 'ios' && (
+          <Action
+            icon="logo-apple"
+            label="Apple Maps"
+            onPress={() => {
+              if (partner) trackPartner(partner, 'directions', 'card');
+              openAppleBikeDirections(target.latitude, target.longitude);
             }}
           />
         )}

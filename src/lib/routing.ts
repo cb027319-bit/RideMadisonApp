@@ -253,6 +253,20 @@ export function googleMapsUrl(points: LatLon[]): string {
   return url;
 }
 
+/**
+ * Apple Maps bike directions through our stops. Uses Apple's directions link
+ * (cycling mode on iOS 18.4+; older iOS opens Maps with your default mode).
+ */
+export function appleMapsUrl(points: LatLon[]): string {
+  const fmt = (p: LatLon) => `${p.latitude.toFixed(6)},${p.longitude.toFixed(6)}`;
+  const origin = points[0];
+  const destination = points[points.length - 1];
+  const middle = points.slice(1, -1).slice(0, 13);
+  let url = `https://maps.apple.com/directions?source=${fmt(origin)}&destination=${fmt(destination)}&mode=cycling`;
+  for (const m of middle) url += `&waypoint=${fmt(m)}`;
+  return url;
+}
+
 export function formatDuration(seconds: number): string {
   const m = Math.max(1, Math.round(seconds / 60));
   if (m < 60) return `${m} min`;
