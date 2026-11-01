@@ -15,21 +15,29 @@ import { BikeMarker } from '@/components/maneuver-icon';
 import { BRAND, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { formatDistance } from '@/lib/geo';
+import { useT } from '@/lib/i18n';
+import { DARK_MAP_STYLE } from '@/lib/map-style';
 import { bearingAt, buildLine, buildManeuvers, pointAt, project } from '@/lib/navigation';
 import { useRoute } from '@/lib/route';
 import { formatDuration, metersToFeet } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
+import { makeStyles, useTheme } from '@/lib/theme';
 
-const ACCENT = BRAND.red;
 const TOUR_SECONDS = 90;
 const TICK_MS = 250;
 const BARS = 60;
-/** Unplayed elevation bars: visible against white (about 3:1). */
-const UNPLAYED = '#8C877C';
+/** Unplayed elevation bars: visible against the panel (about 3:1) in each mode. */
+const UNPLAYED_LIGHT = '#8C877C';
+const UNPLAYED_DARK = '#5E6782';
 
 export default function TourScreen() {
   useKeepAwake();
+  const styles = useStyles();
+  const { c } = useTheme();
+  const { t } = useT();
+  const ACCENT = c.accent;
+  const UNPLAYED = c.dark ? UNPLAYED_DARK : UNPLAYED_LIGHT;
   const { trip } = useTrip();
   const { paths } = useData();
   const route = useRoute();
@@ -117,9 +125,9 @@ export default function TourScreen() {
   if (!trip || !line) {
     return (
       <SafeAreaView style={styles.empty}>
-        <Text style={styles.emptyText}>Pick a route to preview.</Text>
+        <Text style={styles.emptyText}>{t('route.tour.pick')}</Text>
         <Pressable style={styles.primary} onPress={() => router.back()} accessibilityRole="button">
-          <Text style={styles.primaryText}>Back</Text>
+          <Text style={styles.primaryText}>{t('common.back')}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -166,6 +174,8 @@ export default function TourScreen() {
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         mapType={satellite ? 'hybrid' : 'standard'}
+        userInterfaceStyle={c.dark ? 'dark' : 'light'}
+        customMapStyle={c.dark && !satellite ? DARK_MAP_STYLE : []}
         initialCamera={{ center: line.coords[0], heading: bearingAt(line, 0, 120), pitch: 62, zoom: 16, altitude: 800 }}
         scrollEnabled={false}
         zoomEnabled={false}
@@ -173,7 +183,7 @@ export default function TourScreen() {
         pitchEnabled={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}>
-        <Polyline coordinates={line.coords} strokeColor="#ffffff" strokeWidth={9} lineCap="round" zIndex={1} />
+        <Polyline coordinates={line.coords} strokeColor={c.dark && !satellite ? c.bg : '#FFFFFF'} strokeWidth={9} lineCap="round" zIndex={1} />
         <Polyline coordinates={line.coords} strokeColor={ACCENT} strokeWidth={5} lineCap="round" zIndex={2} />
         {stops.map((s, i) => (
           <Marker key={`${s.label}:${i}`} coordinate={pointAt(line, s.along)} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} zIndex={5}>
@@ -187,42 +197,42 @@ export default function TourScreen() {
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.close} accessibilityRole="button" accessibilityLabel="Close preview" hitSlop={4}>
-            <Ionicons name="close" size={24} color="#fff" />
+          <Pressable onPress={() => router.back()} style={styles.close} accessibilityRole="button" accessibilityLabel={t('route.tour.close')} hitSlop={4}>
+            <Ionicons name="close" size={24} color="#FFFFFF" />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>VIRTUAL RIDE PREVIEW</Text>
+            <Text style={styles.kicker}>{t('route.tour.kicker')}</Text>
             <Text style={styles.title} numberOfLines={2} accessibilityRole="header">{trip.title}</Text>
           </View>
           <Pressable
             onPress={() => setSatellite(!satellite)}
             style={styles.close}
             accessibilityRole="button"
-            accessibilityLabel={satellite ? 'Show street map' : 'Show satellite map'}
+            accessibilityLabel={satellite ? t('route.tour.showStreet') : t('route.tour.showSatellite')}
             hitSlop={4}>
-            <Ionicons name={satellite ? 'map' : 'earth'} size={20} color="#fff" />
+            <Ionicons name={satellite ? 'map' : 'earth'} size={20} color="#FFFFFF" />
           </Pressable>
         </View>
         <View style={styles.chips}>
           <View style={styles.chip}>
             <Text style={styles.chipBig}>{formatDistance(along)}</Text>
-            <Text style={styles.chipSmall}>of {formatDistance(line.total)}</Text>
+            <Text style={styles.chipSmall}>{t('route.tour.of', { dist: formatDistance(line.total) })}</Text>
           </View>
           <View style={styles.chip}>
             <Text style={styles.chipBig}>{formatDuration(elapsedRideTime)}</Text>
-            <Text style={styles.chipSmall}>into the ride</Text>
+            <Text style={styles.chipSmall}>{t('route.tour.intoRide')}</Text>
           </View>
           {profile && (
             <View style={styles.chip}>
-              <Text style={styles.chipBig}>{metersToFeet(currentElevation(profile, progress))} ft</Text>
-              <Text style={styles.chipSmall}>elevation</Text>
+              <Text style={styles.chipBig}>{t('common.feet', { n: metersToFeet(currentElevation(profile, progress)) })}</Text>
+              <Text style={styles.chipSmall}>{t('route.tour.elevation')}</Text>
             </View>
           )}
         </View>
         {trailName && (
           <View style={styles.onTrail}>
-            <Ionicons name="trail-sign" size={14} color="#fff" />
-            <Text style={styles.onTrailText} numberOfLines={1}>On {trailName}</Text>
+            <Ionicons name="trail-sign" size={14} color="#FFFFFF" />
+            <Text style={styles.onTrailText} numberOfLines={1}>{t('route.tour.on', { name: trailName })}</Text>
           </View>
         )}
       </SafeAreaView>
@@ -231,16 +241,16 @@ export default function TourScreen() {
         <View style={styles.panel}>
           {next && !done && (
             <Text style={styles.next} numberOfLines={2}>
-              Next: <Text style={{ fontWeight: '800' }}>{next.label}</Text> · {formatDistance(next.along - along)}
+              {t('route.tour.next')} <Text style={{ fontWeight: '800' }}>{next.label}</Text> · {formatDistance(next.along - along)}
             </Text>
           )}
-          {done && <Text style={styles.next}>That&apos;s the ride! {formatDistance(line.total)}, {metersToFeet(trip.result.climbM)} ft of climbing.</Text>}
+          {done && <Text style={styles.next}>{t('route.tour.done', { dist: formatDistance(line.total), climb: metersToFeet(trip.result.climbM) })}</Text>}
 
           <View style={styles.profileRow}>
             {profile && (
               <View style={styles.scale} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                <Text style={styles.scaleText}>{metersToFeet(profile.max)} ft</Text>
-                <Text style={styles.scaleText}>{metersToFeet(profile.min)} ft</Text>
+                <Text style={styles.scaleText}>{t('common.feet', { n: metersToFeet(profile.max) })}</Text>
+                <Text style={styles.scaleText}>{t('common.feet', { n: metersToFeet(profile.min) })}</Text>
               </View>
             )}
             <Pressable
@@ -249,9 +259,9 @@ export default function TourScreen() {
               style={styles.profile}
               accessible
               accessibilityRole="adjustable"
-              accessibilityLabel="Ride progress"
-              accessibilityHint="Swipe up or down to move 10 percent"
-              accessibilityValue={{ text: `${formatDistance(along)} of ${formatDistance(line.total)}, ${Math.round(progress * 100)} percent` }}
+              accessibilityLabel={t('route.tour.progress')}
+              accessibilityHint={t('route.tour.progressHint')}
+              accessibilityValue={{ text: t('route.tour.progressValue', { along: formatDistance(along), total: formatDistance(line.total), pct: Math.round(progress * 100) }) }}
               accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
               onAccessibilityAction={onProgressAction}>
               {profile
@@ -275,28 +285,28 @@ export default function TourScreen() {
                 setPlaying(done ? true : !playing);
               }}
               accessibilityRole="button"
-              accessibilityLabel={done ? 'Play again' : playing ? 'Pause' : 'Play'}>
-              <Ionicons name={done ? 'refresh' : playing ? 'pause' : 'play'} size={26} color="#fff" />
+              accessibilityLabel={done ? t('route.tour.playAgain') : playing ? t('route.tour.pause') : t('route.tour.play')}>
+              <Ionicons name={done ? 'refresh' : playing ? 'pause' : 'play'} size={26} color={c.onPrimary} />
             </Pressable>
             <Pressable
               style={styles.speedBtn}
               onPress={() => setSpeed(speed === 1 ? 2 : speed === 2 ? 4 : 1)}
               accessibilityRole="button"
-              accessibilityLabel={`Speed ${speed}x`}
-              accessibilityHint="Changes playback speed">
+              accessibilityLabel={t('route.tour.speed', { n: speed })}
+              accessibilityHint={t('route.tour.speedHint')}>
               <Text style={styles.speedText}>{speed}×</Text>
             </Pressable>
             <Pressable
               style={styles.speedBtn}
               onPress={() => setShowDirections(true)}
               accessibilityRole="button"
-              accessibilityLabel="Directions">
-              <Ionicons name="list" size={22} color={BRAND.navy} />
+              accessibilityLabel={t('route.directions')}>
+              <Ionicons name="list" size={22} color={c.primary} />
             </Pressable>
             <View style={{ flex: 1 }} />
-            <Pressable style={styles.rideBtn} onPress={startRide} accessibilityRole="button" accessibilityHint="Turn-by-turn directions with voice">
-              <Ionicons name="navigate" size={18} color="#fff" />
-              <Text style={styles.rideText}>Start ride</Text>
+            <Pressable style={styles.rideBtn} onPress={startRide} accessibilityRole="button" accessibilityHint={t('route.startRideHint')}>
+              <Ionicons name="navigate" size={18} color={c.onAccent} />
+              <Text style={styles.rideText}>{t('route.startRide')}</Text>
             </Pressable>
           </View>
         </View>
@@ -322,42 +332,42 @@ function currentElevation(profile: { vals: number[]; min: number }, progress: nu
   return Number.isFinite(v) ? v : profile.min;
 }
 
-const shadow = { shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 };
+const shadow = { shadowColor: '#000000', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+const useStyles = makeStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
   close: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(20,33,61,0.85)', alignItems: 'center', justifyContent: 'center' },
-  kicker: { color: BRAND.gold, fontSize: 13, fontFamily: FONT.black, letterSpacing: 1 },
-  title: { color: '#fff', fontSize: 21, fontFamily: FONT.black, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
+  kicker: { color: c.gold, fontSize: 13, fontFamily: FONT.black, letterSpacing: 1 },
+  title: { color: '#FFFFFF', fontSize: 21, fontFamily: FONT.black, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
   chips: { flexDirection: 'row', gap: 8, marginTop: 10 },
   chip: { backgroundColor: 'rgba(20,33,61,0.85)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
-  chipBig: { color: '#fff', fontSize: 18, fontFamily: FONT.black },
+  chipBig: { color: '#FFFFFF', fontSize: 18, fontFamily: FONT.black },
   chipSmall: { color: BRAND.limestone, fontSize: 13 },
   onTrail: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8,
     backgroundColor: '#15803d', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
   },
-  onTrailText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  onTrailText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10 },
-  panel: { backgroundColor: '#fff', borderRadius: 22, padding: 16, marginBottom: 6, gap: 12, ...shadow },
-  next: { fontSize: 15, color: BRAND.navy },
+  panel: { backgroundColor: c.surface, borderRadius: 22, padding: 16, marginBottom: 6, gap: 12, ...shadow },
+  next: { fontSize: 15, color: c.text },
   profileRow: { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
   scale: { justifyContent: 'space-between', paddingVertical: 0 },
-  scaleText: { fontSize: 13, color: BRAND.slate },
+  scaleText: { fontSize: 13, color: c.textMuted },
   profile: { flex: 1, height: 56, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5 },
   bar: { flex: 1, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-  playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: BRAND.navy },
+  playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: c.text },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  playBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
-  speedBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
-  speedText: { fontSize: 16, fontFamily: FONT.black, color: BRAND.navy },
-  rideBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BRAND.red, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 14 },
-  rideText: { color: '#fff', fontSize: 16, fontFamily: FONT.black },
-  stopDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff', borderWidth: 3, borderColor: ACCENT },
-  primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  primaryText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: '#fff' },
-  emptyText: { fontSize: 17, color: '#111827', textAlign: 'center' },
-});
+  playBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
+  speedBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: c.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  speedText: { fontSize: 16, fontFamily: FONT.black, color: c.primary },
+  rideBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.accent, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 14 },
+  rideText: { color: c.onAccent, fontSize: 16, fontFamily: FONT.black },
+  stopDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#FFFFFF', borderWidth: 3, borderColor: c.accent },
+  primary: { alignSelf: 'stretch', backgroundColor: c.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  primaryText: { color: c.onPrimary, fontSize: 17, fontWeight: '700' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: c.bg },
+  emptyText: { fontSize: 17, color: c.text, textAlign: 'center' },
+}));

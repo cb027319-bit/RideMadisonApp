@@ -16,19 +16,20 @@ import { BikeMarker, ManeuverIcon } from '@/components/maneuver-icon';
 import { useAuth } from '@/lib/auth';
 import { useRideLog } from '@/lib/ridelog';
 import { addFix, MIN_LOG_M, newRecorder, type Badge } from '@/lib/stats';
-import { BRAND, COLORS, FONT } from '@/lib/config';
+import { BRAND, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
+import { locale, useT } from '@/lib/i18n';
+import { DARK_MAP_STYLE } from '@/lib/map-style';
 import {
   bearingAt, buildLine, buildManeuvers, instruction, nextManeuver, pointAt, project, reachedStop, shortDistance, voicePrompt,
   type Maneuver, type RouteLine,
 } from '@/lib/navigation';
-import { useRoute } from '@/lib/route';
+import { isDroppedPin, useRoute } from '@/lib/route';
 import { fetchRoute, formatDuration, type LatLon, type RouteResult } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
-
-const ACCENT = BRAND.red;
+import { makeStyles, useTheme } from '@/lib/theme';
 
 /** Animated marker typed loosely: react-native-maps' types omit children. */
 const AnimatedMarker = MarkerAnimated as unknown as React.ComponentType<{
@@ -66,6 +67,10 @@ function alongOfWaypoints(line: RouteLine, wps: LatLon[]): number[] {
 
 export default function NavigateScreen() {
   useKeepAwake();
+  const styles = useStyles();
+  const { c } = useTheme();
+  const { t } = useT();
+  const ACCENT = c.accent;
   const { trip } = useTrip();
   const { paths } = useData();
   const route = useRoute();
@@ -144,7 +149,7 @@ export default function NavigateScreen() {
   const say = (text: string) => {
     if (mutedRef.current) return;
     Speech.stop();
-    Speech.speak(text, { language: 'en-US', rate: 1.0 });
+    Speech.speak(text, { language: locale(), rate: 1.0 });
   };
 
   /** New route from here. `approach`: the rider is away from the start, so ride to it first. */
@@ -154,14 +159,14 @@ export default function NavigateScreen() {
     reroutingRef.current = true;
     setRerouting(approach ? 'approach' : 'reroute');
     const settling = Date.now() - startedAt < QUIET_START_MS || fixCount.current <= QUIET_START_FIXES;
-    if (!approach && !settling) say('Rerouting');
+    if (!approach && !settling) say(t('route.voice.rerouting'));
     try {
       const remaining = approach
         ? current.waypoints
         : current.waypoints.filter((_, i) => current.waypointAlong[i] > alongRef.current + 25);
       const targets = remaining.length ? remaining : [current.waypoints[current.waypoints.length - 1]];
       const r = await fetchRoute([pos, ...targets], trip.profile);
-      const next = build(r, [{ ...pos, label: 'My location' }, ...targets]);
+      const next = build(r, [{ ...pos, label: t('route.myLocation') }, ...targets]);
       spoken.current = new Set();
       reached.current = new Set();
       alongRef.current = 0;
@@ -227,8 +232,8 @@ export default function NavigateScreen() {
       const stop = reachedStop(current.waypointAlong, p.along, current.line.total, reached.current);
       if (stop != null) {
         const label = current.waypoints[stop]?.label;
-        const name = label && label !== 'Dropped pin' ? label : 'your stop';
-        say(`You've reached ${name}`);
+        const name = label && !isDroppedPin(label) ? label : t('route.yourStop');
+        say(t('route.voice.reached', { name }));
         setReachedLabel(name);
         setTimeout(() => setReachedLabel(null), 6000);
       }
@@ -297,8 +302,8 @@ export default function NavigateScreen() {
   useEffect(() => {
     if (!arrived || mutedRef.current) return;
     Speech.stop();
-    Speech.speak('You have arrived. Nice ride!', { language: 'en-US' });
-  }, [arrived]);
+    Speech.speak(t('route.voice.arrived'), { language: locale() });
+  }, [arrived]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save tapped while signed out: carry on once signed in.
   const saveRideNow = () => {
@@ -307,10 +312,10 @@ export default function NavigateScreen() {
     route
       .saveRide(trip.title)
       .then((r) => {
-        if (r) Alert.alert('Saved to your rides', 'Find it under Route, then Saved.');
-        else Alert.alert('Not saved', 'Plan the ride in the Route tab to save it.');
+        if (r) Alert.alert(t('route.savedToRides'), t('route.savedFindIt'));
+        else Alert.alert(t('route.notSaved'), t('route.planToSave'));
       })
-      .catch(() => Alert.alert('Not saved', 'Check your connection and try again.'))
+      .catch(() => Alert.alert(t('route.notSaved'), t('route.checkConnection')))
       .finally(() => setSaving(false));
   };
   const saveRef = useRef(saveRideNow);
@@ -376,9 +381,9 @@ export default function NavigateScreen() {
   if (!trip || !nav) {
     return (
       <SafeAreaView style={styles.empty}>
-        <Text style={styles.emptyText}>Plan a route first, then tap Start.</Text>
+        <Text style={styles.emptyText}>{t('route.planFirst')}</Text>
         <Pressable style={styles.primary} onPress={() => router.back()} accessibilityRole="button">
-          <Text style={styles.primaryText}>Back</Text>
+          <Text style={styles.primaryText}>{t('common.back')}</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -388,7 +393,7 @@ export default function NavigateScreen() {
   const toTurn = m ? Math.max(0, m.at - along) : 0;
   const remaining = Math.max(0, nav.line.total - along);
   const timeLeft = nav.line.total ? (nav.timeS * remaining) / nav.line.total : 0;
-  const eta = new Date(now + timeLeft * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const eta = new Date(now + timeLeft * 1000).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
 
   const overview = () => {
     setFollowing(false);
@@ -402,14 +407,14 @@ export default function NavigateScreen() {
   const end = () => {
     Speech.stop();
     void logRide().then((earned) => {
-      if (earned.length) Alert.alert('New badge!', earned.map((b) => b.name).join(', '));
+      if (earned.length) Alert.alert(t('route.newBadge'), earned.map((b) => b.name).join(', '));
     });
     router.back();
   };
   const confirmEnd = () => {
-    Alert.alert('End ride?', 'Turn-by-turn directions will stop.', [
-      { text: 'Keep riding', style: 'cancel' },
-      { text: 'End ride', style: 'destructive', onPress: end },
+    Alert.alert(t('route.endTitle'), t('route.endMsg'), [
+      { text: t('route.keepRiding'), style: 'cancel' },
+      { text: t('route.endRide'), style: 'destructive', onPress: end },
     ]);
   };
 
@@ -420,13 +425,15 @@ export default function NavigateScreen() {
         style={StyleSheet.absoluteFill}
         initialCamera={{ center: start, heading: bearingAt(nav.line, 0, 25), pitch: 55, zoom: 17, altitude: 400 }}
         onPanDrag={() => setFollowing(false)}
+        userInterfaceStyle={c.dark ? 'dark' : 'light'}
+        customMapStyle={c.dark ? DARK_MAP_STYLE : []}
         showsUserLocation={false}
         showsCompass={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}
         pitchEnabled>
-        <Polyline coordinates={split.done} strokeColor="#9ca3af" strokeWidth={7} lineCap="round" zIndex={1} />
-        <Polyline coordinates={split.todo} strokeColor="#ffffff" strokeWidth={11} lineCap="round" zIndex={2} />
+        <Polyline coordinates={split.done} strokeColor={c.dark ? '#7C859B' : '#9ca3af'} strokeWidth={7} lineCap="round" zIndex={1} />
+        <Polyline coordinates={split.todo} strokeColor={c.dark ? c.bg : '#FFFFFF'} strokeWidth={11} lineCap="round" zIndex={2} />
         <Polyline coordinates={split.todo} strokeColor={ACCENT} strokeWidth={7} lineCap="round" zIndex={3} />
         <AnimatedMarker coordinate={bikePos} anchor={{ x: 0.5, y: 0.5 }} zIndex={10} tracksViewChanges={!iconReady}>
           <BikeMarker color={ACCENT} />
@@ -437,32 +444,32 @@ export default function NavigateScreen() {
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         {permissionDenied ? (
           <View style={[styles.banner, { backgroundColor: '#b91c1c' }]} accessibilityLiveRegion="polite">
-            <Text style={styles.bannerMain} accessibilityRole="header">Location is off</Text>
-            <Text style={styles.bannerSub}>Allow location for Ride Madison in Settings to navigate.</Text>
+            <Text style={styles.bannerMain} accessibilityRole="header">{t('route.locOffTitle')}</Text>
+            <Text style={styles.bannerSub}>{t('route.locOffSub')}</Text>
             <Pressable onPress={() => void Linking.openSettings()} style={styles.bannerBtn} accessibilityRole="button">
-              <Text style={styles.bannerBtnText}>Open Settings</Text>
+              <Text style={styles.bannerBtnText}>{t('common.openSettings')}</Text>
             </Pressable>
           </View>
         ) : rerouting ? (
-          <View style={[styles.banner, styles.bannerRow, { backgroundColor: rerouting === 'approach' ? BRAND.navy : '#c2410c' }]} accessibilityLiveRegion="polite">
-            <ActivityIndicator color="#fff" />
-            <Text style={styles.bannerMain}>{rerouting === 'approach' ? 'Getting you to the start…' : 'Rerouting…'}</Text>
+          <View style={[styles.banner, styles.bannerRow, { backgroundColor: rerouting === 'approach' ? (c.dark ? c.surfaceAlt : BRAND.navy) : '#c2410c' }]} accessibilityLiveRegion="polite">
+            <ActivityIndicator color="#FFFFFF" />
+            <Text style={styles.bannerMain}>{rerouting === 'approach' ? t('route.toStart') : t('route.rerouting')}</Text>
           </View>
         ) : rerouteFailed ? (
           <View style={[styles.banner, { backgroundColor: '#c2410c' }]} accessibilityLiveRegion="polite">
-            <Text style={styles.bannerMain}>Couldn’t get a new route</Text>
-            <Text style={styles.bannerSub}>Head back to the red line. We’ll keep trying.</Text>
+            <Text style={styles.bannerMain}>{t('route.noNewRoute')}</Text>
+            <Text style={styles.bannerSub}>{t('route.headBack')}</Text>
           </View>
         ) : !hasFix ? (
           <View style={styles.banner}>
-            <Text style={styles.bannerMain}>Finding your location…</Text>
-            <Text style={styles.bannerSub}>Head outside for the best GPS signal.</Text>
+            <Text style={styles.bannerMain}>{t('route.findingLoc')}</Text>
+            <Text style={styles.bannerSub}>{t('route.headOutside')}</Text>
           </View>
         ) : m ? (
           <View style={styles.banner} accessibilityLiveRegion="polite">
             <View style={styles.bannerRow}>
               <View style={styles.turnIcon}>
-                <ManeuverIcon type={m.type} size={44} color="#fff" />
+                <ManeuverIcon type={m.type} size={44} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.turnDistance}>{shortDistance(toTurn)}</Text>
@@ -471,8 +478,8 @@ export default function NavigateScreen() {
             </View>
             {then && then.at - m.at < 400 && (
               <View style={styles.thenRow}>
-                <Text style={styles.thenText}>Then</Text>
-                <ManeuverIcon type={then.type} size={18} color="#fff" />
+                <Text style={styles.thenText}>{t('route.then')}</Text>
+                <ManeuverIcon type={then.type} size={18} color="#FFFFFF" />
                 <Text style={styles.thenText} numberOfLines={2}>{instruction(then)}</Text>
               </View>
             )}
@@ -480,8 +487,8 @@ export default function NavigateScreen() {
         ) : null}
         {reachedLabel && (
           <View style={styles.reached} accessibilityLiveRegion="polite">
-            <Ionicons name="flag" size={16} color={BRAND.navy} />
-            <Text style={styles.reachedText}>You’ve reached {reachedLabel}</Text>
+            <Ionicons name="flag" size={16} color={c.onGold} />
+            <Text style={styles.reachedText}>{t('route.voice.reached', { name: reachedLabel })}</Text>
           </View>
         )}
       </SafeAreaView>
@@ -489,21 +496,21 @@ export default function NavigateScreen() {
       {/* Bottom controls */}
       <SafeAreaView edges={['bottom']} style={styles.bottomWrap} pointerEvents="box-none">
         {!following && (
-          <Pressable style={styles.recenter} onPress={recenter} accessibilityRole="button" accessibilityLabel="Recenter on my position">
-            <Ionicons name="navigate" size={18} color={BRAND.navy} />
-            <Text style={styles.recenterText}>Recenter</Text>
+          <Pressable style={styles.recenter} onPress={recenter} accessibilityRole="button" accessibilityLabel={t('route.recenterA11y')}>
+            <Ionicons name="navigate" size={18} color={c.primary} />
+            <Text style={styles.recenterText}>{t('route.recenter')}</Text>
           </Pressable>
         )}
         <View style={styles.bottom}>
-          <Pressable style={styles.ctl} onPress={confirmEnd} accessibilityLabel="End ride" accessibilityRole="button">
+          <Pressable style={styles.ctl} onPress={confirmEnd} accessibilityLabel={t('route.endRide')} accessibilityRole="button">
             <View style={styles.endBtn}>
-              <Ionicons name="close" size={26} color="#fff" />
+              <Ionicons name="close" size={26} color="#FFFFFF" />
             </View>
-            <Text style={styles.ctlText}>End</Text>
+            <Text style={styles.ctlText}>{t('route.endShort')}</Text>
           </Pressable>
-          <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityLabel={`${formatDuration(timeLeft)} left, ${formatDistance(remaining)}, arrive ${eta}`}>
+          <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityLabel={t('route.etaA11y', { time: formatDuration(timeLeft), dist: formatDistance(remaining), eta })}>
             <Text style={styles.timeLeft}>{formatDuration(timeLeft)}</Text>
-            <Text style={styles.remaining}>{formatDistance(remaining)}  ·  arrive {eta}</Text>
+            <Text style={styles.remaining}>{t('route.remaining', { dist: formatDistance(remaining), eta })}</Text>
           </View>
           <Pressable
             style={styles.ctl}
@@ -512,22 +519,22 @@ export default function NavigateScreen() {
               setMuted(!muted);
             }}
             accessibilityRole="button"
-            accessibilityLabel={muted ? 'Turn voice on' : 'Mute voice'}>
+            accessibilityLabel={muted ? t('route.voiceOn') : t('route.voiceMute')}>
             <View style={styles.iconBtn}>
-              <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={22} color={COLORS.text} />
+              <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={22} color={c.text} />
             </View>
-            <Text style={styles.ctlText}>{muted ? 'Muted' : 'Voice'}</Text>
+            <Text style={styles.ctlText}>{muted ? t('route.muted') : t('route.voice')}</Text>
           </Pressable>
-          <Pressable style={styles.ctl} onPress={overview} accessibilityRole="button" accessibilityLabel="Show whole route">
+          <Pressable style={styles.ctl} onPress={overview} accessibilityRole="button" accessibilityLabel={t('route.overviewA11y')}>
             <View style={styles.iconBtn}>
-              <Ionicons name="map-outline" size={22} color={COLORS.text} />
+              <Ionicons name="map-outline" size={22} color={c.text} />
             </View>
-            <Text style={styles.ctlText}>Overview</Text>
+            <Text style={styles.ctlText}>{t('route.overview')}</Text>
           </Pressable>
         </View>
         {__DEV__ && (
           <Pressable onPress={() => setSimulating((s) => !s)} style={styles.simBtn} accessibilityRole="button">
-            <Text style={styles.simText}>{simulating ? 'Stop simulated ride' : 'Simulate ride (testing)'}</Text>
+            <Text style={styles.simText}>{simulating ? t('route.simStop') : t('route.simStart')}</Text>
           </Pressable>
         )}
       </SafeAreaView>
@@ -535,28 +542,28 @@ export default function NavigateScreen() {
       {arrived && (
         <View style={styles.arrivedWrap}>
           <View style={styles.arrivedCard}>
-            <Ionicons name="trophy" size={44} color={BRAND.gold} />
-            <Text style={styles.arrivedTitle}>You made it!</Text>
+            <Ionicons name="trophy" size={44} color={c.gold} />
+            <Text style={styles.arrivedTitle}>{t('route.madeIt')}</Text>
             <Text style={styles.arrivedStats}>
               {formatDistance(Math.max(ridden, nav.line.total * 0.98))}  ·  {formatDuration((now - startedAt) / 1000)}
             </Text>
             {summary && summary.movingS > 30 && (
               <Text style={styles.arrivedSub}>
-                Avg {((summary.distanceM / 1609.344) / (summary.movingS / 3600)).toFixed(1)} mph moving
-                {auth.session ? '  ·  Added to your stats' : ''}
+                {t('route.avgMoving', { mph: ((summary.distanceM / 1609.344) / (summary.movingS / 3600)).toFixed(1) })}
+                {auth.session ? `  ·  ${t('route.addedStats')}` : ''}
               </Text>
             )}
             {newBadges.length > 0 && (
               <View style={styles.badgeWon}>
-                <Ionicons name="ribbon" size={18} color={BRAND.navy} />
-                <Text style={styles.badgeWonText}>New badge: {newBadges.map((b) => b.name).join(', ')}</Text>
+                <Ionicons name="ribbon" size={18} color={c.onGold} />
+                <Text style={styles.badgeWonText}>{t('route.newBadgeList', { names: newBadges.map((b) => b.name).join(', ') })}</Text>
               </View>
             )}
             <Text style={styles.arrivedSub}>{trip.title}</Text>
             {route.savedId ? (
-              <View style={[styles.primary, styles.savedPill]} accessible accessibilityLabel="Already in your saved rides">
-                <Ionicons name="bookmark" size={18} color={BRAND.navy} />
-                <Text style={[styles.primaryText, { color: BRAND.navy }]}>In your saved rides</Text>
+              <View style={[styles.primary, styles.savedPill]} accessible accessibilityLabel={t('route.inSavedA11y')}>
+                <Ionicons name="bookmark" size={18} color={c.text} />
+                <Text style={[styles.primaryText, { color: c.text }]}>{t('route.inSaved')}</Text>
               </View>
             ) : (
               <Pressable
@@ -565,17 +572,17 @@ export default function NavigateScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: saving, busy: saving }}
                 onPress={() => {
-                  if (!auth.requireAccount('Create a free account to save this ride.')) {
+                  if (!auth.requireAccount(t('route.saveNeedsAccountShort'))) {
                     setPendingSave(true);
                     return;
                   }
                   saveRideNow();
                 }}>
-                <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save ride'}</Text>
+                <Text style={styles.primaryText}>{saving ? t('route.saving') : t('route.saveRide')}</Text>
               </Pressable>
             )}
             <Pressable onPress={end} style={styles.doneBtn} accessibilityRole="button">
-              <Text style={styles.done}>Done</Text>
+              <Text style={styles.done}>{t('common.done')}</Text>
             </Pressable>
           </View>
         </View>
@@ -585,26 +592,26 @@ export default function NavigateScreen() {
 }
 
 const shadow = {
-  shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+  shadowColor: '#000000', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8,
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+const useStyles = makeStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 10 },
-  banner: { marginTop: 6, backgroundColor: BRAND.navy, borderRadius: 20, padding: 16, ...shadow },
+  banner: { marginTop: 6, backgroundColor: c.dark ? c.surfaceAlt : BRAND.navy, borderWidth: c.dark ? 1 : 0, borderColor: c.border, borderRadius: 20, padding: 16, ...shadow },
   bannerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  turnIcon: { width: 64, height: 64, borderRadius: 16, backgroundColor: BRAND.red, alignItems: 'center', justifyContent: 'center' },
-  turnDistance: { color: '#fff', fontSize: 36, fontFamily: FONT.black },
-  turnText: { color: '#fff', fontSize: 19, fontFamily: FONT.bold, marginTop: 2 },
-  bannerMain: { color: '#fff', fontSize: 22, fontFamily: FONT.black },
+  turnIcon: { width: 64, height: 64, borderRadius: 16, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
+  turnDistance: { color: '#FFFFFF', fontSize: 36, fontFamily: FONT.black },
+  turnText: { color: '#FFFFFF', fontSize: 19, fontFamily: FONT.bold, marginTop: 2 },
+  bannerMain: { color: '#FFFFFF', fontSize: 22, fontFamily: FONT.black },
   bannerSub: { color: BRAND.limestone, fontSize: 15, marginTop: 4 },
-  bannerBtn: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
+  bannerBtn: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: '#FFFFFF', borderRadius: 999, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
   bannerBtnText: { color: BRAND.navy, fontSize: 15, fontFamily: FONT.black },
   reached: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', marginTop: 8, backgroundColor: BRAND.gold,
+    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', marginTop: 8, backgroundColor: c.gold,
     borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, ...shadow,
   },
-  reachedText: { color: BRAND.navy, fontSize: 16, fontFamily: FONT.black },
+  reachedText: { color: c.onGold, fontSize: 16, fontFamily: FONT.black },
   thenRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.3)',
@@ -612,34 +619,34 @@ const styles = StyleSheet.create({
   thenText: { color: BRAND.limestone, fontSize: 15, fontFamily: FONT.bold, flexShrink: 1 },
   bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10 },
   bottom: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 22,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surface, borderRadius: 22,
     padding: 12, marginBottom: 6, ...shadow,
   },
   ctl: { alignItems: 'center', gap: 2, minWidth: 48 },
-  ctlText: { fontSize: 13, fontFamily: FONT.bold, color: COLORS.muted },
+  ctlText: { fontSize: 13, fontFamily: FONT.bold, color: c.textMuted },
   endBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
-  timeLeft: { fontSize: 30, fontFamily: FONT.black, color: BRAND.navy },
-  remaining: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
-  iconBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
+  timeLeft: { fontSize: 30, fontFamily: FONT.black, color: c.text },
+  remaining: { fontSize: 14, color: c.textMuted, marginTop: 2 },
+  iconBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: c.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   recenter: {
-    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff',
+    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.surface,
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, marginBottom: 10, ...shadow,
   },
-  recenterText: { color: BRAND.navy, fontFamily: FONT.bold, fontSize: 15 },
+  recenterText: { color: c.primary, fontFamily: FONT.bold, fontSize: 15 },
   simBtn: { alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.75)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, marginBottom: 4 },
-  simText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  arrivedWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
-  arrivedCard: { backgroundColor: '#fff', borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
-  arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: COLORS.text },
-  arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: BRAND.red },
-  badgeWon: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BRAND.gold, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 4 },
-  badgeWonText: { fontFamily: FONT.bold, fontSize: 15, color: BRAND.navy },
-  arrivedSub: { fontSize: 14, color: COLORS.muted, marginBottom: 8, textAlign: 'center' },
-  primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center', minHeight: 48 },
-  savedPill: { flexDirection: 'row', justifyContent: 'center', gap: 8, backgroundColor: BRAND.limestone },
+  simText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
+  arrivedWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.scrim, justifyContent: 'center', padding: 24 },
+  arrivedCard: { backgroundColor: c.surface, borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
+  arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: c.text },
+  arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: c.accent },
+  badgeWon: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.gold, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 4 },
+  badgeWonText: { fontFamily: FONT.bold, fontSize: 15, color: c.onGold },
+  arrivedSub: { fontSize: 14, color: c.textMuted, marginBottom: 8, textAlign: 'center' },
+  primary: { alignSelf: 'stretch', backgroundColor: c.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', minHeight: 48 },
+  savedPill: { flexDirection: 'row', justifyContent: 'center', gap: 8, backgroundColor: c.surfaceAlt },
   doneBtn: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center' },
-  primaryText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },
-  done: { color: COLORS.muted, fontSize: 16, fontWeight: '600' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: '#fff' },
-  emptyText: { fontSize: 17, color: COLORS.text, textAlign: 'center' },
-});
+  primaryText: { color: c.onPrimary, fontSize: 17, fontFamily: FONT.black },
+  done: { color: c.textMuted, fontSize: 16, fontWeight: '600' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: c.bg },
+  emptyText: { fontSize: 17, color: c.text, textAlign: 'center' },
+}));

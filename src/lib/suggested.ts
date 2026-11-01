@@ -6,6 +6,7 @@
 // append to SUGGESTED_RIDES; it is measured on the rider's phone and cached.
 
 import { distanceMeters } from './geo';
+import { t } from './i18n';
 import type { LatLon, RouteBreakdown, RouteProfile, RouteResult } from './routing';
 
 export type RideType = 'trail' | 'gravel' | 'road';
@@ -32,7 +33,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'monona-loop',
     name: 'Lake Monona Loop',
     area: 'Madison · Monona',
-    description: 'The classic lake loop past Monona Terrace (the lakeside convention center by the Capitol), Olbrich Gardens and Olin Park, with lake views most of the way.',
+    get description() {
+      return t('route.ride.mononaLoop');
+    },
     shape: 'loop',
     points: [p('Monona Terrace', 43.0717, -89.3808), p('Olbrich Gardens', 43.0927, -89.3349), p('Winnequah Park', 43.0606, -89.3315), p('Olin Park', 43.0527, -89.3755)],
     profile: 'quiet',
@@ -42,7 +45,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'mendota-loop',
     name: 'Lake Mendota Loop',
     area: 'Madison · Middleton · Maple Bluff',
-    description: 'A big half-day loop around Lake Mendota, from Memorial Union (the UW student union on the lake) through Middleton and past Governor Nelson State Park.',
+    get description() {
+      return t('route.ride.mendotaLoop');
+    },
     shape: 'loop',
     points: [p('Memorial Union', 43.0763, -89.4), p('Middleton', 43.0975, -89.5045), p('Governor Nelson State Park', 43.136, -89.4385), p('Warner Park', 43.1265, -89.37), p('Tenney Park', 43.0915, -89.3705)],
     profile: 'quiet',
@@ -52,7 +57,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'capital-city-lake-farm',
     name: 'Capital City Trail to Lake Farm Park',
     area: 'Madison · Capital Springs',
-    description: 'Paved, flat and car-free once you leave downtown, out to the marshes and prairie of Capital Springs (a big park and wetland on the south side).',
+    get description() {
+      return t('route.ride.capitalCityLakeFarm');
+    },
     shape: 'out_and_back',
     points: [p('Monona Terrace', 43.0717, -89.3808), p('Lake Farm County Park', 43.0246, -89.3448)],
     profile: 'quiet',
@@ -62,7 +69,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'lower-yahara',
     name: 'Lower Yahara River Trail',
     area: 'Madison · McFarland',
-    description: 'Short and scenic: the long boardwalk across Lake Waubesa’s wetlands between Lake Farm Park and McFarland.',
+    get description() {
+      return t('route.ride.lowerYahara');
+    },
     shape: 'out_and_back',
     points: [p('Lake Farm County Park', 43.0246, -89.3448), p('McDaniel Park, McFarland', 43.0128, -89.2947)],
     profile: 'quiet',
@@ -72,7 +81,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'southwest-path',
     name: 'Southwest Commuter Path',
     area: 'Madison · Fitchburg',
-    description: 'Madison’s busiest bike path, from near Camp Randall (the UW football stadium) out to Fitchburg on a former rail line.',
+    get description() {
+      return t('route.ride.southwestPath');
+    },
     shape: 'out_and_back',
     points: [p('Camp Randall', 43.0697, -89.4128), p('Fitchburg', 43.028, -89.45)],
     profile: 'quiet',
@@ -82,7 +93,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'cannonball',
     name: 'Wingra Creek & Cannonball Path',
     area: 'Madison · Fitchburg',
-    description: 'Quiet creekside path that links into the Cannonball Path toward Fitchburg.',
+    get description() {
+      return t('route.ride.cannonball');
+    },
     shape: 'out_and_back',
     points: [p('Wingra Creek', 43.0545, -89.392), p('Cannonball Path, Fitchburg', 43.02, -89.4215)],
     profile: 'quiet',
@@ -92,7 +105,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'arboretum-wingra',
     name: 'Arboretum & Lake Wingra',
     area: 'Madison',
-    description: 'An easy loop through the UW Arboretum (a big nature preserve with quiet, slow roads and paths) and around Lake Wingra. Great with kids.',
+    get description() {
+      return t('route.ride.arboretumWingra');
+    },
     shape: 'loop',
     points: [p('Vilas Park', 43.0603, -89.4155), p('Arboretum Visitor Center', 43.0413, -89.4277), p('Monroe St', 43.061, -89.428)],
     profile: 'quiet',
@@ -103,7 +118,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'military-ridge-verona',
     name: 'Military Ridge Trail to Verona',
     area: 'Fitchburg · Verona',
-    description: 'Crushed-limestone rail trail west to Verona’s coffee shops and brewpub. State trail pass required.',
+    get description() {
+      return t('route.ride.militaryRidgeVerona');
+    },
     shape: 'out_and_back',
     points: [p('Military Ridge Trail, Fitchburg', 42.9985, -89.4515), p('Verona', 42.9875, -89.534)],
     profile: 'balanced',
@@ -113,7 +130,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'military-ridge-mount-horeb',
     name: 'Military Ridge Trail to Mount Horeb',
     area: 'Verona · Mount Horeb',
-    description: 'A long, steady gravel climb along the ridge to Mount Horeb, the “Troll Capital” with carved trolls along Main Street. State trail pass required.',
+    get description() {
+      return t('route.ride.militaryRidgeMountHoreb');
+    },
     shape: 'out_and_back',
     points: [p('Verona', 42.9875, -89.534), p('Mount Horeb', 43.0072, -89.7383)],
     profile: 'balanced',
@@ -123,7 +142,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'badger-paoli',
     name: 'Badger State Trail to Paoli',
     area: 'Fitchburg · Paoli',
-    description: 'Rail trail south through farmland to tiny Paoli, with a café and creamery at the turnaround. State trail pass required.',
+    get description() {
+      return t('route.ride.badgerPaoli');
+    },
     shape: 'out_and_back',
     points: [p('Badger State Trail, Fitchburg', 43.0125, -89.429), p('Paoli', 42.9278, -89.5268)],
     profile: 'balanced',
@@ -133,9 +154,17 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'glacial-drumlin-deerfield',
     name: 'Glacial Drumlin Trail to Deerfield',
     area: 'Cottage Grove · Deerfield',
-    description: 'Flat crushed-stone rail trail east through marsh and farm country. State trail pass required.',
+    get description() {
+      return t('route.ride.glacialDrumlinDeerfield');
+    },
     shape: 'out_and_back',
-    points: [p('Cottage Grove trailhead', 43.0786, -89.2003), p('Deerfield', 43.0519, -89.077)],
+    points: [{
+      get label() {
+        return t('route.point.cottageGroveTrailhead');
+      },
+      latitude: 43.0786,
+      longitude: -89.2003,
+    }, p('Deerfield', 43.0519, -89.077)],
     profile: 'balanced',
     expectedType: 'gravel',
   },
@@ -143,7 +172,9 @@ export const SUGGESTED_RIDES: SuggestedRide[] = [
     id: 'kegonsa',
     name: 'McFarland to Lake Kegonsa State Park',
     area: 'McFarland · Stoughton',
-    description: 'Country roads south to Lake Kegonsa State Park’s beach and prairie trails.',
+    get description() {
+      return t('route.ride.kegonsa');
+    },
     shape: 'out_and_back',
     points: [p('McDaniel Park, McFarland', 43.0128, -89.2947), p('Lake Kegonsa State Park', 42.978, -89.235)],
     profile: 'balanced',
@@ -166,19 +197,26 @@ export function rideTypeOf(b?: RouteBreakdown): RideType | undefined {
   return 'road';
 }
 
-export const RIDE_TYPE_LABEL: Record<RideType, string> = {
-  trail: 'Paved trail',
-  gravel: 'Gravel',
-  road: 'Roads & bike lanes',
+/** Labels are getters so they always read the current language. */
+export const RIDE_TYPE_LABEL: Readonly<Record<RideType, string>> = {
+  get trail() {
+    return t('route.type.trail');
+  },
+  get gravel() {
+    return t('route.type.gravel');
+  },
+  get road() {
+    return t('route.type.road');
+  },
 };
 
 /** Under this share of busier roads, a "road" ride is really quiet streets. */
 const LOW_ROAD = 0.15;
 
 /** Label for a ride's type; low-traffic street rides read "Mostly quiet streets". */
-export function rideTypeLabel(t: RideType, b?: RouteBreakdown): string {
-  if (t === 'road' && b && b.road < LOW_ROAD) return 'Mostly quiet streets';
-  return RIDE_TYPE_LABEL[t];
+export function rideTypeLabel(type: RideType, b?: RouteBreakdown): string {
+  if (type === 'road' && b && b.road < LOW_ROAD) return t('route.type.quietStreets');
+  return RIDE_TYPE_LABEL[type];
 }
 
 /** Good for kids: almost no busier roads when measured, else a known path ride. */
@@ -192,25 +230,39 @@ export type TypeFilter = RideType | 'any' | 'family';
 export type LengthFilter = 'any' | 'short' | 'medium' | 'long';
 export type FromMeFilter = 'any' | 'near' | 'mid';
 
-export const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
-  { id: 'any', label: 'Any type' },
-  { id: 'family', label: 'Family friendly' },
-  { id: 'trail', label: RIDE_TYPE_LABEL.trail },
-  { id: 'gravel', label: RIDE_TYPE_LABEL.gravel },
-  { id: 'road', label: RIDE_TYPE_LABEL.road },
+/** A filter option whose label (and a11y text) is looked up when read, in the current language. */
+function opt<T extends string, X extends object>(id: T, labelKey: string, a11yKey: string | null, extra: X) {
+  return {
+    id,
+    ...extra,
+    get label() {
+      return labelKey.startsWith('route.') ? t(labelKey) : RIDE_TYPE_LABEL[labelKey as RideType];
+    },
+    get a11y() {
+      return a11yKey ? t(a11yKey) : this.label;
+    },
+  };
+}
+
+export const TYPE_FILTERS: { id: TypeFilter; readonly label: string }[] = [
+  opt('any', 'route.filter.anyType', null, {}),
+  opt('family', 'route.filter.family', null, {}),
+  opt('trail', 'trail', null, {}),
+  opt('gravel', 'gravel', null, {}),
+  opt('road', 'road', null, {}),
 ];
 
-export const LENGTH_FILTERS: { id: LengthFilter; label: string; a11y: string; min: number; max: number }[] = [
-  { id: 'any', label: 'Any length', a11y: 'Any length', min: 0, max: Infinity },
-  { id: 'short', label: 'Under 10 mi', a11y: 'Under 10 miles', min: 0, max: 10 },
-  { id: 'medium', label: '10–25 mi', a11y: '10 to 25 miles', min: 10, max: 25 },
-  { id: 'long', label: '25+ mi', a11y: '25 miles or more', min: 25, max: Infinity },
+export const LENGTH_FILTERS: { id: LengthFilter; readonly label: string; readonly a11y: string; min: number; max: number }[] = [
+  opt('any', 'route.filter.anyLength', null, { min: 0, max: Infinity }),
+  opt('short', 'route.filter.short', 'route.filter.shortA11y', { min: 0, max: 10 }),
+  opt('medium', 'route.filter.medium', 'route.filter.mediumA11y', { min: 10, max: 25 }),
+  opt('long', 'route.filter.long', 'route.filter.longA11y', { min: 25, max: Infinity }),
 ];
 
-export const FROM_ME_FILTERS: { id: FromMeFilter; label: string; a11y: string; maxMi: number }[] = [
-  { id: 'any', label: 'Anywhere', a11y: 'Anywhere', maxMi: Infinity },
-  { id: 'near', label: 'Within 5 mi', a11y: 'Within 5 miles', maxMi: 5 },
-  { id: 'mid', label: 'Within 15 mi', a11y: 'Within 15 miles', maxMi: 15 },
+export const FROM_ME_FILTERS: { id: FromMeFilter; readonly label: string; readonly a11y: string; maxMi: number }[] = [
+  opt('any', 'route.filter.anywhere', null, { maxMi: Infinity }),
+  opt('near', 'route.filter.near', 'route.filter.nearA11y', { maxMi: 5 }),
+  opt('mid', 'route.filter.mid', 'route.filter.midA11y', { maxMi: 15 }),
 ];
 
 export interface MeasuredRide {
@@ -245,10 +297,10 @@ export function filterRides(
       if (f.type === 'family') {
         if (!isFamilyFriendly(m)) return false;
       } else if (f.type !== 'any') {
-        const t = rideTypeOf(m.result?.breakdown) ?? (m.result ? undefined : m.ride.expectedType);
+        const kind = rideTypeOf(m.result?.breakdown) ?? (m.result ? undefined : m.ride.expectedType);
         // A path ride measured as "road" only because of quiet park roads still counts as a trail ride.
-        const quietPath = f.type === 'trail' && m.ride.expectedType === 'trail' && t === 'road' && (m.result?.breakdown?.road ?? 1) < 0.1;
-        if (t !== f.type && !quietPath) return false;
+        const quietPath = f.type === 'trail' && m.ride.expectedType === 'trail' && kind === 'road' && (m.result?.breakdown?.road ?? 1) < 0.1;
+        if (kind !== f.type && !quietPath) return false;
       }
       if (f.fromMe !== 'any' && (m.fromMeMi == null || m.fromMeMi > near.maxMi)) return false;
       return true;

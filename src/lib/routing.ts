@@ -5,6 +5,7 @@
 // launch, routing moves to our own BRouter instance (same API) — see README.
 
 import { COVERAGE_BBOX, MADISON_CENTER, USER_AGENT } from './config';
+import { lang, t } from './i18n';
 import { UNPAVED } from './osm';
 
 export interface LatLon {
@@ -14,10 +15,26 @@ export interface LatLon {
 
 export type RouteProfile = 'quiet' | 'balanced' | 'fast';
 
-export const PROFILE_META: Record<RouteProfile, { label: string; brouter: string; hint: string; surface: string }> = {
-  quiet: { label: 'Quietest', brouter: 'safety', hint: 'Paths and calm streets', surface: 'Mostly paved; may use smooth gravel trails' },
-  balanced: { label: 'Balanced', brouter: 'trekking', hint: 'Some traffic, more direct', surface: 'Happy on packed gravel trails' },
-  fast: { label: 'Fastest', brouter: 'fastbike', hint: 'Most direct, more traffic', surface: 'Sticks to paved roads' },
+/** Labels are getters so they always read the current language. */
+function profileMeta(id: RouteProfile, brouter: string) {
+  return {
+    brouter,
+    get label() {
+      return t(`route.profile.${id}.label`);
+    },
+    get hint() {
+      return t(`route.profile.${id}.hint`);
+    },
+    get surface() {
+      return t(`route.profile.${id}.surface`);
+    },
+  };
+}
+
+export const PROFILE_META: Record<RouteProfile, { readonly label: string; brouter: string; readonly hint: string; readonly surface: string }> = {
+  quiet: profileMeta('quiet', 'safety'),
+  balanced: profileMeta('balanced', 'trekking'),
+  fast: profileMeta('fast', 'fastbike'),
 };
 
 export interface RouteBreakdown {
@@ -247,7 +264,7 @@ export function wayNameAt(ways: WaySpan[] | undefined, index: number): string | 
 export function parseBRouter(json: BRouterGeoJSON): RouteResult {
   const f = json.features?.[0];
   if (!f?.geometry || f.geometry.type !== 'LineString' || f.geometry.coordinates.length < 2) {
-    throw new Error('No route found');
+    throw new Error(t('route.err.noRoute'));
   }
   const coords: LatLon[] = [];
   const elevations: (number | null)[] = [];
@@ -274,8 +291,8 @@ export async function fetchRoute(points: LatLon[], profile: RouteProfile, signal
   if (!res.ok) {
     // BRouter explains failures in plain text, e.g. a point far from any road.
     const reason = text.includes('not mapped') || text.includes('no match')
-      ? 'A stop is too far from a bike-legal road or path'
-      : `Routing failed (${res.status})`;
+      ? t('route.err.tooFar')
+      : t('route.err.routingFailedStatus', { status: res.status });
     throw new Error(reason);
   }
   return parseBRouter(JSON.parse(text) as BRouterGeoJSON);
@@ -305,7 +322,7 @@ export function parsePhoton(json: PhotonGeoJSON): PlaceResult[] {
     const p = f.properties ?? {};
     if (!c) continue;
     const street = [p.housenumber, p.street].filter(Boolean).join(' ');
-    const title = String(p.name ?? (street || p.city || 'Unnamed place'));
+    const title = String(p.name ?? (street || p.city || t('route.unnamedPlace')));
     const subtitleParts = [p.name && street ? street : null, p.city ?? p.district, p.state === 'Wisconsin' ? null : p.state]
       .filter(Boolean)
       .map(String);
@@ -331,23 +348,25 @@ export function shortLabel(json: PhotonGeoJSON): string | null {
 }
 
 const PHOTON = 'https://photon.komoot.io';
+/** Photon has no Spanish: 'default' gives local (English) names for Madison. */
+const photonLang = () => (lang() === 'es' ? 'default' : 'en');
 
 export async function searchPlaces(query: string, near?: LatLon | null, signal?: AbortSignal): Promise<PlaceResult[]> {
   const center = near ?? MADISON_CENTER;
   const [minLon, minLat, maxLon, maxLat] = COVERAGE_BBOX;
   // Bias toward the rider, limited to a generous box around greater Madison.
   const url =
-    `${PHOTON}/api/?q=${encodeURIComponent(query)}&limit=8&lang=en` +
+    `${PHOTON}/api/?q=${encodeURIComponent(query)}&limit=8&lang=${photonLang()}` +
     `&lat=${center.latitude}&lon=${center.longitude}` +
     `&bbox=${minLon - 0.35},${minLat - 0.25},${maxLon + 0.35},${maxLat + 0.25}`;
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal });
-  if (!res.ok) throw new Error(`Search failed (${res.status})`);
+  if (!res.ok) throw new Error(t('route.err.searchFailed', { status: res.status }));
   return parsePhoton((await res.json()) as PhotonGeoJSON);
 }
 
 export async function reverseLabel(p: LatLon): Promise<string | null> {
   try {
-    const res = await fetch(`${PHOTON}/reverse?lat=${p.latitude}&lon=${p.longitude}&limit=1&lang=en`, {
+    const res = await fetch(`${PHOTON}/reverse?lat=${p.latitude}&lon=${p.longitude}&limit=1&lang=${photonLang()}`, {
       headers: { 'User-Agent': USER_AGENT },
     });
     if (!res.ok) return null;
@@ -417,10 +436,10 @@ export function appleMapsUrl(points: LatLon[]): string {
 
 export function formatDuration(seconds: number): string {
   const m = Math.max(1, Math.round(seconds / 60));
-  if (m < 60) return `${m} min`;
+  if (m < 60) return t('route.dur.min', { m });
   const h = Math.floor(m / 60);
   const rem = m % 60;
-  return rem ? `${h} hr ${rem} min` : `${h} hr`;
+  return rem ? t('route.dur.hrMin', { h, m: rem }) : t('route.dur.hr', { h });
 }
 
 export const metersToFeet = (m: number) => Math.round(m * 3.281);

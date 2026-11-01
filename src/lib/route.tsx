@@ -9,6 +9,7 @@ import { useAuth } from './auth';
 import { useData } from './data';
 import { profileFor, usePrefs } from './prefs';
 import { simplify, type LonLat } from './geo';
+import { t, translate } from './i18n';
 import { insertIndex, planKey, thinResult, trimStart } from './planner';
 import { supabase } from './supabase';
 import { fetchRoute, reverseLabel, type LatLon, type RouteProfile, type RouteResult } from './routing';
@@ -116,7 +117,12 @@ function lighten(r: RouteResult): RouteResult {
   return thinResult(r, (i) => keep.has(i));
 }
 
-const SAVED_ERROR = 'Couldn’t load your saved rides. Check your connection.';
+const savedErrorText = () => t('route.err.savedLoad');
+
+/** True for the placeholder label of a pin with no place name yet (in either language). */
+export function isDroppedPin(label: string | undefined): boolean {
+  return !!label && (label === translate('en', 'route.droppedPin') || label === translate('es', 'route.droppedPin'));
+}
 
 export function RouteProvider({ children }: { children: ReactNode }) {
   const { location, locationStatus, requestLocation } = useData();
@@ -161,7 +167,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
         .then(({ data, error }) => {
           if (cancelled) return;
           if (error || !data) {
-            setSavedError(SAVED_ERROR);
+            setSavedError(savedErrorText());
             return;
           }
           setSavedError(null);
@@ -174,7 +180,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
             })),
           );
         }, () => {
-          if (!cancelled) setSavedError(SAVED_ERROR);
+          if (!cancelled) setSavedError(savedErrorText());
         });
       return () => {
         cancelled = true;
@@ -187,7 +193,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
         if (raw) setSavedRides(JSON.parse(raw) as SavedRide[]);
       })
       .catch(() => {
-        if (!cancelled) setSavedError(SAVED_ERROR);
+        if (!cancelled) setSavedError(savedErrorText());
       });
     return () => {
       cancelled = true;
@@ -239,7 +245,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         if (controller.signal.aborted) return;
         setStatus('error');
-        setError(e instanceof Error ? e.message : 'Routing failed');
+        setError(e instanceof Error ? e.message : t('route.err.routingFailed'));
       }
     }, 400);
     return () => {
@@ -257,7 +263,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   const addStop = useCallback(
     (p: LatLon, label?: string) => {
       const id = newId();
-      const stop = { id, latitude: p.latitude, longitude: p.longitude, label: label ?? 'Dropped pin' };
+      const stop = { id, latitude: p.latitude, longitude: p.longitude, label: label ?? t('route.droppedPin') };
       setStops((ss) => {
         const at = insertIndex(ss.length, roundTrip);
         return [...ss.slice(0, at), stop, ...ss.slice(at)];
@@ -283,7 +289,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
 
   const moveStop = useCallback(
     (id: string, p: LatLon) => {
-      setStops((ss) => ss.map((s) => (s.id === id ? { ...s, ...p, label: 'Dropped pin' } : s)));
+      setStops((ss) => ss.map((s) => (s.id === id ? { ...s, ...p, label: t('route.droppedPin') } : s)));
       labelLater(id, p);
     },
     [labelLater],
@@ -335,7 +341,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     const r = privateResult();
     if (!r) return null;
     const points = [
-      ...(usingMyLocation && location && !hideStart ? [{ ...location, label: 'Start' }] : []),
+      ...(usingMyLocation && location && !hideStart ? [{ ...location, label: t('route.start') }] : []),
       ...stops.map(({ latitude, longitude, label }) => ({ latitude, longitude, label })),
     ];
     return { result: r, points };
@@ -348,12 +354,12 @@ export function RouteProvider({ children }: { children: ReactNode }) {
       const existing = savedId ? savedRides.find((x) => x.id === savedId) : undefined;
       if (existing) return existing;
       const allStops: Stop[] = [
-        ...(usingMyLocation && location && !hideStart ? [{ id: newId(), ...location, label: 'Start' }] : []),
+        ...(usingMyLocation && location && !hideStart ? [{ id: newId(), ...location, label: t('route.start') }] : []),
         ...stops,
       ];
       const ride: SavedRide = {
         id: newId(),
-        name: name.trim() || 'My ride',
+        name: name.trim() || t('route.myRide'),
         createdAt: Date.now(),
         profile,
         roundTrip,
@@ -368,7 +374,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
           .insert({ name: rideName, ride: rest })
           .select('id, created_at')
           .single();
-        if (error) throw new Error('Could not save the ride. Check your connection and try again.');
+        if (error) throw new Error(t('route.err.save'));
         const saved = { ...ride, id: data.id as string, createdAt: new Date(data.created_at as string).getTime() };
         setSavedRides((rs) => [saved, ...rs]);
         setLoadedFrom({ id: saved.id, name: saved.name, key: currentStopsKey });
@@ -428,7 +434,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.from('saved_rides').delete().eq('id', id);
         if (error) {
           setSavedRides(before);
-          throw new Error('Couldn’t delete the ride. Check your connection and try again.');
+          throw new Error(t('route.err.delete'));
         }
         return;
       }
