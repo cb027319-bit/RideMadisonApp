@@ -7,6 +7,7 @@ import { COLORS } from '@/lib/config';
 import { DataProvider } from '@/lib/data';
 import { PrefsProvider } from '@/lib/prefs';
 import { RouteProvider } from '@/lib/route';
+import { TripProvider } from '@/lib/trip';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -24,11 +25,18 @@ export default function RootLayout() {
         <AuthProvider>
           <DataProvider>
             <RouteProvider>
-              <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              </Stack>
-              <AuthSheet />
-              <StatusBar style="dark" />
+              <TripProvider>
+                <Stack>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="navigate"
+                    options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false, animation: 'fade' }}
+                  />
+                  <Stack.Screen name="tour" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
+                </Stack>
+                <AuthSheet />
+                <StatusBar style="dark" />
+              </TripProvider>
             </RouteProvider>
           </DataProvider>
         </AuthProvider>

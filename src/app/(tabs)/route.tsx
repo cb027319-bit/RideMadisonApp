@@ -10,11 +10,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PathLines } from '@/components/path-lines';
 import { SuggestedRidesSheet } from '@/components/suggested-rides';
+import { routePoints, type SuggestedRide } from '@/lib/suggested';
 import { COLORS, INITIAL_REGION } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/data';
 import { formatDistance, type Region } from '@/lib/geo';
 import { useRoute, type SavedRide } from '@/lib/route';
+import { useTrip } from '@/lib/trip';
+import { router } from 'expo-router';
 import {
   buildGpx, formatDuration, googleMapsUrl, metersToFeet, PROFILE_META, searchPlaces, type PlaceResult, type RouteBreakdown,
   type RouteProfile,
@@ -26,6 +29,7 @@ export default function RouteScreen() {
   const { paths, location } = useData();
   const route = useRoute();
   const auth = useAuth();
+  const { setTrip } = useTrip();
   const mapRef = useRef<MapView>(null);
   const searchRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
@@ -131,6 +135,18 @@ export default function RouteScreen() {
   };
 
   const hasRoute = route.status === 'ready' && route.result;
+
+  /** Hand the planned route to the Navigate or Tour screen. */
+  const openTrip = (screen: '/navigate' | '/tour') => {
+    if (!route.result) return;
+    const labels = [
+      ...(route.usingMyLocation ? ['My location'] : []),
+      ...route.stops.map((s) => s.label),
+    ];
+    const points = route.waypoints.map((w, i) => ({ ...w, label: labels[i] ?? labels[0] ?? 'Start' }));
+    setTrip({ title: rideName(route.stops.map((s) => s.label)), result: route.result, points, profile: route.profile });
+    router.push(screen);
+  };
 
   return (
     <View style={styles.container}>
@@ -309,7 +325,8 @@ export default function RouteScreen() {
             <View style={styles.actions}>
               {hasRoute && (
                 <>
-                  <Action icon="navigate" label="Go (Google Maps)" primary onPress={() => void Linking.openURL(googleMapsUrl(route.waypoints))} />
+                  <Action icon="navigate" label="Start" primary onPress={() => openTrip('/navigate')} />
+                  <Action icon="play-circle-outline" label="Preview" onPress={() => openTrip('/tour')} />
                   <Action
                     icon="bookmark-outline"
                     label="Save"
@@ -318,6 +335,7 @@ export default function RouteScreen() {
                     }}
                   />
                   <Action icon="share-outline" label="GPX" onPress={() => void shareGpx()} />
+                  <Action icon="logo-google" label="Google Maps" onPress={() => void Linking.openURL(googleMapsUrl(route.waypoints))} />
                 </>
               )}
               <Action icon="compass-outline" label="Suggested rides" onPress={() => setShowIdeas(true)} />
@@ -326,7 +344,7 @@ export default function RouteScreen() {
             </View>
             {hasRoute && (
               <Text style={styles.footnote}>
-                Drag a pin to adjust. Google Maps may pick slightly different streets for turn-by-turn.
+                Drag a pin to adjust. Start gives turn-by-turn directions right here; keep the app open on screen while you ride.
               </Text>
             )}
           </ScrollView>
@@ -350,6 +368,12 @@ export default function RouteScreen() {
         visible={showIdeas}
         location={location}
         onClose={() => setShowIdeas(false)}
+        onPreview={(ride, result) => {
+          const pts = routePoints(ride).map((pt, i) => ({ ...pt, label: labelFor(ride, i) }));
+          setTrip({ title: ride.name, result, points: pts, profile: ride.profile });
+          setShowIdeas(false);
+          setTimeout(() => router.push('/tour'), 350); // let the sheet close first
+        }}
         onPick={(ride, result) => {
           route.loadPlan({
             stops: ride.points.map(({ label, latitude, longitude }) => ({ label, latitude, longitude })),
@@ -412,6 +436,14 @@ function roleColor(role: Role) {
 
 function roleLabel(role: Role, overall: number) {
   return role === 'start' ? 'Start' : role === 'end' ? 'End' : `Stop ${overall}`;
+}
+
+/** Label for the i-th routed point of a suggested ride (loops/out-and-backs return to start). */
+function labelFor(ride: SuggestedRide, i: number): string {
+  const n = ride.points.length;
+  if (i < n) return ride.points[i].label;
+  if (ride.shape === 'loop') return `Back to ${ride.points[0].label}`;
+  return ride.points[n - 1 - (i - n + 1)]?.label ?? ride.points[0].label;
 }
 
 function rideName(labels: string[]) {

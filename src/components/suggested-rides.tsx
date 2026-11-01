@@ -34,9 +34,10 @@ interface Props {
   location: LatLon | null;
   onClose: () => void;
   onPick: (ride: SuggestedRide, result?: RouteResult) => void;
+  onPreview: (ride: SuggestedRide, result: RouteResult) => void;
 }
 
-export function SuggestedRidesSheet({ visible, location, onClose, onPick }: Props) {
+export function SuggestedRidesSheet({ visible, location, onClose, onPick, onPreview }: Props) {
   const [results, setResults] = useState<Record<string, RouteResult | 'error'>>({});
   const [length, setLength] = useState<LengthFilter>('any');
   const [type, setType] = useState<RideType | 'any'>('any');
@@ -119,7 +120,12 @@ export function SuggestedRidesSheet({ visible, location, onClose, onPick }: Prop
             </Text>
           }
           renderItem={({ item }) => (
-            <RideCard m={item} failed={results[item.ride.id] === 'error'} onPress={() => onPick(item.ride, item.result)} />
+            <RideCard
+              m={item}
+              failed={results[item.ride.id] === 'error'}
+              onPress={() => onPick(item.ride, item.result)}
+              onPreview={item.result ? () => onPreview(item.ride, item.result!) : undefined}
+            />
           )}
         />
       </View>
@@ -149,7 +155,9 @@ function FilterRow<T extends string>({ label, options, value, onChange }: {
   );
 }
 
-function RideCard({ m, failed, onPress }: { m: MeasuredRide; failed: boolean; onPress: () => void }) {
+function RideCard({ m, failed, onPress, onPreview }: {
+  m: MeasuredRide; failed: boolean; onPress: () => void; onPreview?: () => void;
+}) {
   const r = m.result;
   const t = rideTypeOf(r?.breakdown) ?? m.ride.expectedType;
   const b = r?.breakdown;
@@ -189,9 +197,21 @@ function RideCard({ m, failed, onPress }: { m: MeasuredRide; failed: boolean; on
           {'  ·  '}
           {m.ride.shape === 'loop' ? 'Loop' : 'Out and back'}
         </Text>
-        <View style={{ flex: 1 }} />
-        <Text style={styles.ride}>Ride this</Text>
-        <Ionicons name="chevron-forward" size={16} color={ACCENT} />
+      </View>
+      <View style={styles.cardActions}>
+        <Pressable
+          style={[styles.previewBtn, !onPreview && { opacity: 0.4 }]}
+          disabled={!onPreview}
+          onPress={onPreview}
+          accessibilityRole="button"
+          accessibilityLabel={`Preview ${m.ride.name}`}>
+          <Ionicons name="play-circle" size={18} color={ACCENT} />
+          <Text style={styles.previewText}>Virtual preview</Text>
+        </Pressable>
+        <Pressable style={styles.rideBtn} onPress={onPress} accessibilityRole="button">
+          <Text style={styles.rideBtnText}>Ride this</Text>
+          <Ionicons name="chevron-forward" size={16} color="#fff" />
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -228,5 +248,15 @@ const styles = StyleSheet.create({
   desc: { fontSize: 14, color: COLORS.text, lineHeight: 19 },
   cardFoot: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   footText: { fontSize: 13, color: COLORS.muted },
-  ride: { fontSize: 14, fontWeight: '700', color: ACCENT },
+  cardActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  previewBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5,
+    borderColor: ACCENT, borderRadius: 12, paddingVertical: 10,
+  },
+  previewText: { color: ACCENT, fontWeight: '700', fontSize: 14 },
+  rideBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: ACCENT,
+    borderRadius: 12, paddingVertical: 10,
+  },
+  rideBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

@@ -191,3 +191,9 @@ export function closestPointOnTrail(
   }
   return best ? { latitude: best[1], longitude: best[0] } : null;
 }
+
+/** Name of the trail or named bike street at a point (within ~tolM meters), if any. */
+export function nameAt(paths: BikePath[], point: { latitude: number; longitude: number }, tolM = 18): string | undefined {
+  const hit = nearestPath(paths, point, tolM / 110540, true);
+  return hit?.name;
+}
