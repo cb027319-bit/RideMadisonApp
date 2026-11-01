@@ -1,9 +1,11 @@
 // Turn-by-turn navigation and ride preview geometry (pure, unit-tested).
-// Turns are detected from the route's shape, which works for any route the
-// planner produces; trail names are added by the screen from our trail data.
+// Turns come from the router's voice hints when it sends them, with street
+// names from its way tags. Otherwise they are detected from the route's shape,
+// which works for any route (including older saved rides); trail names are
+// then added by the screen from our trail data.
 
-import { distanceMeters } from './geo';
-import type { LatLon } from './routing';
+import { distanceMeters, formatDistance } from './geo';
+import { wayNameAt, type LatLon, type RouteCue, type WaySpan } from './routing';
 
 export type ManeuverType =
   | 'slight-left' | 'left' | 'sharp-left'
@@ -18,6 +20,11 @@ export interface Maneuver {
   point: LatLon;
   /** Name of the trail or street after the turn, if known. */
   onto?: string;
+  /** A fork: say "Keep left/right" (also used for slight turns). */
+  keep?: boolean;
+  /** Roundabout, with the exit to take when known. */
+  roundabout?: boolean;
+  exit?: number;
 }
 
 export interface RouteLine {
@@ -87,9 +94,9 @@ export function bearingAt(line: RouteLine, along: number, lookM = 15): number {
   return bearing(a, b);
 }
 
-export function classify(angle: number): ManeuverType | null {
+export function classify(angle: number, minAngle = 35): ManeuverType | null {
   const a = Math.abs(angle);
-  if (a < 35) return null;
+  if (a < minAngle) return null;
   const side = angle < 0 ? 'left' : 'right';
   if (a >= 160) return 'uturn';
   if (a < 60) return `slight-${side}` as ManeuverType;
@@ -97,18 +104,32 @@ export function classify(angle: number): ManeuverType | null {
   return `sharp-${side}` as ManeuverType;
 }
 
-/** Turns along the route, from the change in direction around each point. */
-export function detectManeuvers(line: RouteLine, windowM = 20, mergeM = 30): Maneuver[] {
+/**
+ * Turns along the route, from the change in direction around each point.
+ * A bend only counts when it is a real corner (the direction changes within a
+ * few meters, not gradually along a curvy road) or when it happens at a known
+ * junction (`junctions`: coordinate indices where the way changes). At a
+ * junction smaller angles (from 25°) count too, e.g. a fork.
+ */
+export function detectManeuvers(line: RouteLine, windowM = 20, mergeM = 30, junctions?: number[]): Maneuver[] {
   const { coords, cum, total } = line;
   const raw: (Maneuver & { strength: number })[] = [];
+  const atJunction = (d: number) => !!junctions?.some((j) => j > 0 && j < cum.length && Math.abs(cum[j] - d) < 25);
   for (let i = 1; i < coords.length - 1; i++) {
     const d = cum[i];
     if (d < 15 || total - d < 15) continue;
     const before = bearing(pointAt(line, d - windowM), coords[i]);
     const after = bearing(coords[i], pointAt(line, d + windowM));
     const angle = turnAngle(before, after);
-    const type = classify(angle);
-    if (type) raw.push({ type, at: d, index: i, point: coords[i], strength: Math.abs(angle) });
+    const junction = atJunction(d);
+    const type = classify(angle, junction ? 25 : 35);
+    if (!type) continue;
+    if (!junction) {
+      // Curve test: over a wider window a curve keeps turning, a corner doesn't.
+      const wide = turnAngle(bearing(pointAt(line, d - 60), coords[i]), bearing(coords[i], pointAt(line, d + 60)));
+      if (Math.abs(angle) < 0.6 * Math.abs(wide)) continue;
+    }
+    raw.push({ type, at: d, index: i, point: coords[i], strength: Math.abs(angle) });
   }
   // Several points of one corner: keep the strongest within mergeM.
   const out: Maneuver[] = [];
@@ -120,9 +141,64 @@ export function detectManeuvers(line: RouteLine, windowM = 20, mergeM = 30): Man
     }
     out.push(m);
   }
-  const cleaned = out.map(({ type, at, index, point }) => ({ type, at, index, point }));
+  const cleaned: Maneuver[] = out.map(({ type, at, index, point }) => ({
+    type, at, index, point, ...(type === 'slight-left' || type === 'slight-right' ? { keep: true } : {}),
+  }));
   if (coords.length) cleaned.push({ type: 'arrive', at: total, index: coords.length - 1, point: coords[coords.length - 1] });
   return cleaned;
+}
+
+const CUE_TYPE: Record<RouteCue['kind'], ManeuverType | null> = {
+  continue: null,
+  left: 'left',
+  'slight-left': 'slight-left',
+  'sharp-left': 'sharp-left',
+  right: 'right',
+  'slight-right': 'slight-right',
+  'sharp-right': 'sharp-right',
+  'keep-left': 'slight-left',
+  'keep-right': 'slight-right',
+  uturn: 'uturn',
+  'roundabout-right': 'right',
+  'roundabout-left': 'left',
+};
+
+/** Maneuvers from the router's voice hints (cue indices refer to line.coords). */
+export function maneuversFromCues(line: RouteLine, cues: RouteCue[]): Maneuver[] {
+  const { coords, cum, total } = line;
+  const out: Maneuver[] = [];
+  for (const c of cues) {
+    const type = CUE_TYPE[c.kind];
+    if (!type || c.index <= 0 || c.index >= coords.length - 1) continue;
+    const m: Maneuver = { type, at: cum[c.index], index: c.index, point: coords[c.index] };
+    if (c.kind.startsWith('keep') || c.kind.startsWith('slight')) m.keep = true;
+    if (c.kind.startsWith('roundabout')) {
+      m.roundabout = true;
+      if (c.exit) m.exit = c.exit;
+    }
+    out.push(m);
+  }
+  if (coords.length) out.push({ type: 'arrive', at: total, index: coords.length - 1, point: coords[coords.length - 1] });
+  return out;
+}
+
+/**
+ * All maneuvers for a route: router cues when present, else geometry. Street
+ * names come from the router's way names, then `nameAtPoint` (our trail data).
+ */
+export function buildManeuvers(
+  line: RouteLine,
+  route: { cues?: RouteCue[]; ways?: WaySpan[] },
+  nameAtPoint?: (p: LatLon) => string | undefined,
+): Maneuver[] {
+  const fromCues = route.cues?.length && route.cues.every((c) => c.index < line.coords.length);
+  const junctions = route.ways?.map((w) => w.from);
+  const ms = fromCues ? maneuversFromCues(line, route.cues!) : detectManeuvers(line, 20, 30, junctions);
+  return ms.map((m) => {
+    if (m.type === 'arrive') return m;
+    const onto = wayNameAt(route.ways, m.index) ?? nameAtPoint?.(pointAt(line, m.at + 30));
+    return onto ? { ...m, onto } : m;
+  });
 }
 
 export interface Progress {
@@ -176,19 +252,54 @@ export function nextManeuver(maneuvers: Maneuver[], along: number): { current?: 
 }
 
 const VERB: Record<ManeuverType, string> = {
-  'slight-left': 'Bear left',
+  'slight-left': 'Keep left',
   left: 'Turn left',
   'sharp-left': 'Sharp left',
-  'slight-right': 'Bear right',
+  'slight-right': 'Keep right',
   right: 'Turn right',
   'sharp-right': 'Sharp right',
   uturn: 'Make a U-turn',
   arrive: 'Arrive at your destination',
 };
 
+const ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
+
 export function instruction(m: Maneuver): string {
   if (m.type === 'arrive') return VERB.arrive;
+  if (m.roundabout) {
+    const exit = m.exit && ORDINAL[m.exit] ? `take the ${ORDINAL[m.exit]} exit` : 'take your exit';
+    return m.onto ? `At the roundabout, ${exit} onto ${m.onto}` : `At the roundabout, ${exit}`;
+  }
   return m.onto ? `${VERB[m.type]} onto ${m.onto}` : VERB[m.type];
+}
+
+/** Lowercase the first letter for use mid-sentence ("In 700 feet, turn left"). */
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+/** Every maneuver as a line of text, e.g. "In 0.3 mi turn left onto Capital City Trail". */
+export function directionsList(maneuvers: Maneuver[]): { maneuver: Maneuver; text: string }[] {
+  let prev = 0;
+  return maneuvers.map((m) => {
+    const gap = Math.max(0, m.at - prev);
+    prev = m.at;
+    return { maneuver: m, text: `In ${formatDistance(gap)} ${lowerFirst(instruction(m))}` };
+  });
+}
+
+/**
+ * The first intermediate stop the rider has just reached, if any (index into
+ * the planned points; the start and the final destination are never returned).
+ */
+export function reachedStop(stopsAlong: number[], along: number, total: number, reached: Set<number>): number | null {
+  for (let i = 1; i < stopsAlong.length - 1; i++) {
+    if (reached.has(i)) continue;
+    if (stopsAlong[i] >= total - 30) continue; // that's the arrival
+    if (along >= stopsAlong[i] - 20) {
+      reached.add(i);
+      return i;
+    }
+  }
+  return null;
 }
 
 /** Rider-friendly distance: feet under 0.1 mi, rounded to sensible steps. */
@@ -207,20 +318,14 @@ export function speakDistance(meters: number): string {
 export function shortDistance(meters: number): string {
   const ft = meters * 3.281;
   if (ft < 1000) return `${Math.max(10, Math.round(ft / 10) * 10)} ft`;
-  const mi = meters / 1609.344;
-  return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi`;
+  return formatDistance(meters);
 }
 
 /** What to say, if anything, as the rider approaches a turn. */
 export function voicePrompt(m: Maneuver, metersToTurn: number, spoken: Set<string>): string | null {
   const key = (tag: string) => `${m.index}:${tag}`;
-  if (m.type === 'arrive') {
-    if (metersToTurn < 30 && !spoken.has(key('now'))) {
-      spoken.add(key('now'));
-      return 'You have arrived. Nice ride!';
-    }
-    return null;
-  }
+  // Arrival is announced once by the navigation screen itself.
+  if (m.type === 'arrive') return null;
   if (metersToTurn <= 35 && !spoken.has(key('now'))) {
     spoken.add(key('now'));
     spoken.add(key('soon'));
@@ -228,7 +333,7 @@ export function voicePrompt(m: Maneuver, metersToTurn: number, spoken: Set<strin
   }
   if (metersToTurn <= 250 && metersToTurn > 60 && !spoken.has(key('soon'))) {
     spoken.add(key('soon'));
-    return `In ${speakDistance(metersToTurn)}, ${instruction(m).toLowerCase()}`;
+    return `In ${speakDistance(metersToTurn)}, ${lowerFirst(instruction(m))}`;
   }
   return null;
 }

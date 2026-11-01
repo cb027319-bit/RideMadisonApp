@@ -99,3 +99,14 @@ test('Apple Maps hand-off uses cycling mode and waypoints', () => {
   assert.match(url, /mode=cycling/);
   assert.match(url, /waypoint=43\.071900,-89\.408100/);
 });
+
+test('GPX includes stop waypoints and asks BRouter for voice hints', () => {
+  const gpx = buildGpx('Ride to <Colectivo>', { coords: [capitol, unionSouth], elevations: [null, null] }, [
+    { ...capitol, label: 'Start' },
+    { ...unionSouth, label: 'Union South & café' },
+  ]);
+  assert.match(gpx, /<wpt lat="43\.074700" lon="-89\.384200"><name>Start<\/name><\/wpt>/);
+  assert.match(gpx, /<name>Union South &amp; café<\/name>/);
+  assert.match(gpx, /<name>Ride to &lt;Colectivo&gt;<\/name>/);
+  assert.match(brouterUrl([capitol, unionSouth], 'quiet'), /timode=2/);
+});

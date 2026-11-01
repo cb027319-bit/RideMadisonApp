@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import {
   bearing, buildLine, classify, detectManeuvers, instruction, nextManeuver, pointAt, project, shortDistance,
-  speakDistance, turnAngle, voicePrompt,
+  reachedStop, speakDistance, turnAngle, voicePrompt,
 } from '../src/lib/navigation';
 
 // An L-shaped route: 300 m east, then 300 m north (a left turn).
@@ -73,5 +73,34 @@ test('next maneuver, distances and voice prompts', () => {
   assert.equal(voicePrompt(ms[0], 200, spoken), 'In 700 feet, turn left');
   assert.equal(voicePrompt(ms[0], 190, spoken), null); // said once
   assert.equal(voicePrompt(ms[0], 20, spoken), 'Turn left');
-  assert.equal(voicePrompt(ms[1], 10, spoken), 'You have arrived. Nice ride!');
+  // Arrival is spoken once by the screen, never by the turn prompts.
+  assert.equal(voicePrompt(ms[1], 10, spoken), null);
+  assert.equal(voicePrompt({ ...ms[0], index: 99, type: 'slight-left', keep: true, onto: 'Capital City Trail' }, 200, spoken), 'In 700 feet, keep left onto Capital City Trail');
+});
+
+test('curvy roads are not turns unless at a junction', () => {
+  // A 90° bend on a 45 m radius curve: no instruction needed to follow the road.
+  const r = 45;
+  const k = 111320 * Math.cos((43.07 * Math.PI) / 180);
+  const pts: { latitude: number; longitude: number }[] = [];
+  for (let x = -200; x < 0; x += 25) pts.push({ latitude: 43.07, longitude: -89.4 + x / k });
+  for (let i = 0; i <= 12; i++) {
+    const θ = (i / 12) * (Math.PI / 2);
+    pts.push({ latitude: 43.07 + (r * (1 - Math.cos(θ))) / 110540, longitude: -89.4 + (r * Math.sin(θ)) / k });
+  }
+  for (let y = 25; y <= 200; y += 25) pts.push({ latitude: 43.07 + (r + y) / 110540, longitude: -89.4 + r / k });
+  const line = buildLine(pts);
+  assert.deepEqual(detectManeuvers(line).map((m) => m.type), ['arrive']);
+  // The same bend at a junction (the way changes there) is announced.
+  const mid = 8 + 6;
+  assert.match(detectManeuvers(line, 20, 30, [mid])[0].type, /left/);
+});
+
+test('intermediate stops are announced once, never the start or the end', () => {
+  const reached = new Set<number>();
+  const stops = [0, 300, 600];
+  assert.equal(reachedStop(stops, 100, 600, reached), null);
+  assert.equal(reachedStop(stops, 290, 600, reached), 1);
+  assert.equal(reachedStop(stops, 310, 600, reached), null);
+  assert.equal(reachedStop(stops, 600, 600, reached), null);
 });
