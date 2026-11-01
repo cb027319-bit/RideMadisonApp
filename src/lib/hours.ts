@@ -1,8 +1,11 @@
 // OpenStreetMap opening_hours, the common forms only:
 //   "Mo-Fr 11:00-22:00; Sa,Su 10:00-23:00", "24/7", "Mo off", "Fr-Sa 16:00-02:00" (past midnight),
 //   "Mo-Fr 08:00-12:00,13:00-17:00", "PH off" (holiday rules are ignored).
+// Words come from t() (map.hours.*), so riders see them in their language.
 // Anything fancier (months, sunrise, week numbers, comments) returns null so the
 // app shows the raw text instead of guessing. Pure and unit-tested (tests/hours.test.ts).
+
+import { t } from './i18n';
 
 /** Minutes from midnight; an end past 1440 runs into the next day. */
 type Interval = [number, number];
@@ -11,7 +14,6 @@ type Interval = [number, number];
 export type WeekSchedule = Interval[][];
 
 const DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_RE = '(?:Mo|Tu|We|Th|Fr|Sa|Su)';
 const SELECTOR_RE = new RegExp(`^(${DAY_RE}(?:-${DAY_RE})?(?:,${DAY_RE}(?:-${DAY_RE})?)*)(?:\\s+|$)`);
 const TIME_RE = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/;
@@ -84,9 +86,9 @@ export function parseOpeningHours(raw: string | null | undefined): WeekSchedule 
     if (rest === 'off' || rest === 'closed') intervals = [];
     else if (rest === '24/7' || rest === '00:00-24:00') intervals = [[0, 1440]];
     else {
-      const t = parseTimes(rest);
-      if (!t) return null;
-      intervals = t;
+      const times = parseTimes(rest);
+      if (!times) return null;
+      intervals = times;
     }
     // A later rule replaces earlier ones for the same days (OSM semantics).
     for (const d of days) week[d] = intervals.map((i) => [i[0], i[1]] as Interval);
@@ -98,12 +100,12 @@ export function parseOpeningHours(raw: string | null | undefined): WeekSchedule 
 /** "11 am", "10:30 pm", "noon", "midnight". */
 export function formatClock(minutes: number): string {
   const m = ((minutes % 1440) + 1440) % 1440;
-  if (m === 0) return 'midnight';
-  if (m === 720) return 'noon';
+  if (m === 0) return t('map.hours.midnight');
+  if (m === 720) return t('map.hours.noon');
   const h24 = Math.floor(m / 60);
   const mm = m % 60;
   const h = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h}${mm ? `:${String(mm).padStart(2, '0')}` : ''} ${h24 < 12 ? 'am' : 'pm'}`;
+  return `${h}${mm ? `:${String(mm).padStart(2, '0')}` : ''} ${t(h24 < 12 ? 'map.hours.am' : 'map.hours.pm')}`;
 }
 
 export interface OpenStatus {
@@ -117,10 +119,10 @@ export function openStatus(raw: string | null | undefined, now: Date = new Date(
   const week = parseOpeningHours(raw);
   if (!week) return null;
   const allDay = week.every((d) => d.some(([s, e]) => s === 0 && e >= 1440));
-  if (allDay) return { open: true, text: 'Open 24 hours' };
+  if (allDay) return { open: true, text: t('map.hours.open24') };
 
   const today = (now.getDay() + 6) % 7;
-  const t = now.getHours() * 60 + now.getMinutes();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   // Absolute minutes from the start of today; yesterday's late hours are negative offsets.
   const spans: Interval[] = [];
   for (let k = -1; k <= 7; k++) {
@@ -129,17 +131,22 @@ export function openStatus(raw: string | null | undefined, now: Date = new Date(
   }
   spans.sort((a, b) => a[0] - b[0]);
 
-  const current = spans.find(([s, e]) => s <= t && t < e);
+  const current = spans.find(([s, e]) => s <= nowMin && nowMin < e);
   if (current) {
     // Follow back-to-back spans (e.g. "Fr 18:00-24:00; Sa 00:00-02:00").
     let close = current[1];
     for (const [s, e] of spans) if (s <= close && e > close) close = e;
-    return { open: true, text: `Open now · closes ${formatClock(close)}` };
+    return { open: true, text: t('map.hours.openCloses', { time: formatClock(close) }) };
   }
-  const next = spans.find(([s]) => s > t);
-  if (!next) return { open: false, text: 'Closed' };
+  const next = spans.find(([s]) => s > nowMin);
+  if (!next) return { open: false, text: t('map.hours.closed') };
   const dayOffset = Math.floor(next[0] / 1440);
+  const time = formatClock(next[0]);
   const when =
-    dayOffset === 0 ? '' : dayOffset === 1 ? 'tomorrow ' : `${DAY_NAMES[(today + dayOffset) % 7]} `;
-  return { open: false, text: `Closed · opens ${when}${formatClock(next[0])}` };
+    dayOffset === 0
+      ? time
+      : dayOffset === 1
+        ? t('map.hours.tomorrow', { time })
+        : t('map.hours.onDay', { day: t(`map.hours.day${(today + dayOffset) % 7}`), time });
+  return { open: false, text: t('map.hours.closedOpens', { when }) };
 }

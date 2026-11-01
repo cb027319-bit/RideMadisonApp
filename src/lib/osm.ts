@@ -4,6 +4,7 @@
 
 import { COVERAGE_BBOX, OVERPASS_URLS, USER_AGENT } from './config';
 import { bboxOf, round5, simplify, type BBox, type LonLat } from './geo';
+import { t as tr } from './i18n';
 
 // ---------- types ----------
 
@@ -226,6 +227,50 @@ function details(kind: PlaceKind, t: Record<string, string>): string[] {
   return d;
 }
 
+/** Place details are stored in English (they're cached on the phone); this shows one in the rider's language. */
+const DETAIL_KEYS: Record<string, string> = {
+  'Bike racks': 'map.detail.bikeRacks',
+  'Wheel-bender racks': 'map.detail.wheelBender',
+  'Bike shed': 'map.detail.shed',
+  'Bike lockers': 'map.detail.lockers',
+  'Indoor parking': 'map.detail.indoor',
+  Bollards: 'map.detail.bollards',
+  'Two-tier racks': 'map.detail.twoTier',
+  'Sheltered racks': 'map.detail.sheltered',
+  Covered: 'map.detail.covered',
+  'Customers only': 'map.detail.customers',
+  Fee: 'map.detail.fee',
+  'Air pump': 'map.detail.pump',
+  Tools: 'map.detail.tools',
+  'Repair stand': 'map.detail.stand',
+  'Chain tool': 'map.detail.chainTool',
+  Repairs: 'map.detail.repairs',
+  Rentals: 'map.detail.rentals',
+  'Used bikes': 'map.detail.used',
+  Seasonal: 'map.detail.seasonal',
+  'Changing table': 'map.detail.changing',
+  'Wheelchair accessible': 'map.detail.wheelchair',
+  Restaurant: 'map.detail.restaurant',
+  'Café': 'map.detail.cafe',
+  'Quick bite': 'map.detail.quickBite',
+  'Ice cream': 'map.detail.iceCream',
+  Bar: 'map.detail.bar',
+  Pub: 'map.detail.pub',
+  'Beer garden': 'map.detail.beerGarden',
+  Brewery: 'map.detail.brewery',
+  Winery: 'map.detail.winery',
+  Distillery: 'map.detail.distillery',
+  Patio: 'map.detail.patio',
+};
+
+export function detailLabel(d: string): string {
+  const key = DETAIL_KEYS[d];
+  if (key) return tr(key);
+  const spaces = /^(\d+) spaces$/.exec(d);
+  if (spaces) return tr('map.detail.spaces', { count: Number(spaces[1]) });
+  return d; // raw OSM values (cuisine, unusual parking types)
+}
+
 export function parsePlaces(json: { elements?: OverpassElement[] }): Place[] {
   const out: Place[] = [];
   for (const el of json.elements ?? []) {
@@ -255,7 +300,7 @@ export function parsePlaces(json: { elements?: OverpassElement[] }): Place[] {
 
 // ---------- fetching ----------
 
-/** Plain-language errors shown to riders (raw server details go to the dev console only). */
+/** Plain-language errors (English; screens show map.dataError / map.dataBusy via t()). Raw server details go to the dev console only. */
 export const MAP_DATA_ERROR = "Couldn't load map data. Check your connection and try again.";
 export const MAP_DATA_BUSY = 'Map data servers are busy. Showing your saved copy.';
 

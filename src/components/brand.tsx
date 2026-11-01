@@ -6,6 +6,7 @@ import { Text, View, type TextStyle } from 'react-native';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 
 import { BRAND, FONT } from '@/lib/config';
+import { useTheme } from '@/lib/theme';
 
 const SPOKES =
   'M55 34 L63.5 34 M50 39 L50 47.5 M45 34 L36.5 34 M50 29 L50 20.5 M53.5 37.5 L59.5 43.5 M46.5 37.5 L40.5 43.5 M46.5 30.5 L40.5 24.5 M53.5 30.5 L59.5 24.5';
@@ -59,10 +60,12 @@ function AppIconTile({ size, withText }: { size: number; withText: boolean }) {
   );
 }
 
-/** "RideMadison®" wordmark: heavy Ride, light Madison, small raised ® at the upper right. */
-export function Wordmark({ size = 28, color = BRAND.navy, style, mark = true }: {
+/** "RideMadison®" wordmark: heavy Ride, light Madison, small raised ® at the upper right. Defaults to the theme text colour. */
+export function Wordmark({ size = 28, color: colorProp, style, mark = true }: {
   size?: number; color?: string; style?: TextStyle; mark?: boolean;
 }) {
+  const { c } = useTheme();
+  const color = colorProp ?? c.text;
   return (
     <View
       style={{ flexDirection: 'row', alignItems: 'flex-start' }}
@@ -92,10 +95,12 @@ export function Wordmark({ size = 28, color = BRAND.navy, style, mark = true }: 
 
 /** Horizontal logo: mark + wordmark on a navy plate (website / sponsor style). */
 export function HorizontalLogo({ height = 44, onLight = false }: { height?: number; onLight?: boolean }) {
-  const fg = onLight ? BRAND.navy : '#FFFFFF';
+  const { c } = useTheme();
+  // "onLight" means on the page background: navy in light mode, limestone/cream in dark mode.
+  const fg = onLight ? c.text : '#FFFFFF';
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: height * 0.28 }}>
-      <LogoMark size={height} color={onLight ? BRAND.navy : BRAND.limestone} />
+      <LogoMark size={height} color={onLight && !c.dark ? BRAND.navy : BRAND.limestone} />
       <Wordmark size={height * 0.72} color={fg} />
     </View>
   );

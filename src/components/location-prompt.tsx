@@ -3,38 +3,43 @@
 // phone's Settings. Renders nothing once location is on.
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
-import { COLORS, FONT } from '@/lib/config';
+import { FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
+import { useT } from '@/lib/i18n';
+import { makeStyles, useTheme } from '@/lib/theme';
 
 interface Props {
-  /** What the rider gets, e.g. "Sort by distance from you". */
+  /** What the rider gets, e.g. "Sort by distance from you" (already translated). Defaults to "Use my location". */
   action?: string;
 }
 
-export function LocationPrompt({ action = 'Use my location' }: Props) {
+export function LocationPrompt({ action }: Props) {
   const { locationStatus, requestLocation, openLocationSettings } = useData();
+  const { t } = useT();
+  const { c } = useTheme();
+  const styles = useStyles();
   if (locationStatus === 'granted') return null;
   const denied = locationStatus === 'denied';
   return (
     <View style={styles.row}>
-      <Ionicons name={denied ? 'location-outline' : 'navigate-outline'} size={18} color={COLORS.brand} />
-      <Text style={styles.text}>{denied ? 'Location is off' : 'Location not in use'}</Text>
+      <Ionicons name={denied ? 'location-outline' : 'navigate-outline'} size={18} color={c.primary} />
+      <Text style={styles.text}>{denied ? t('map.loc.offTitle') : t('map.loc.notInUse')}</Text>
       <Pressable
         onPress={() => (denied ? openLocationSettings() : void requestLocation())}
         style={styles.btn}
         accessibilityRole="button"
-        accessibilityHint={denied ? 'Opens Settings so you can turn on location for Ride Madison' : undefined}>
-        <Text style={styles.btnText}>{denied ? 'Open Settings' : action}</Text>
+        accessibilityHint={denied ? t('map.loc.settingsHint') : undefined}>
+        <Text style={styles.btnText}>{denied ? t('common.openSettings') : (action ?? t('map.loc.useMine'))}</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 6, flexWrap: 'wrap' },
-  text: { fontSize: 14, color: COLORS.text, flexShrink: 1 },
+  text: { fontSize: 14, color: c.text, flexShrink: 1 },
   btn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
-  btnText: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.brand, textDecorationLine: 'underline' },
-});
+  btnText: { fontSize: 14, fontFamily: FONT.bold, color: c.primary, textDecorationLine: 'underline' },
+}));

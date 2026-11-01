@@ -7,14 +7,17 @@ import { OfferPass } from '@/components/offer-pass';
 import {
   BCYCLE_APP_ANDROID, BCYCLE_APP_ANDROID_WEB, BCYCLE_APP_IOS, BCYCLE_PRICING_URL, type BCycleStation,
 } from '@/lib/bcycle';
-import { BRAND, COLORS, FONT } from '@/lib/config';
+import { COLORS, FONT } from '@/lib/config';
 import type { Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { openStatus } from '@/lib/hours';
+import { t, useT } from '@/lib/i18n';
 import { PATH_META, PLACE_META, timeAgo } from '@/lib/labels';
 import { callPhone, openAppleBikeDirections, openBikeDirections, openWebsite } from '@/lib/links';
+import { detailLabel } from '@/lib/osm';
 import type { ParkTrail } from '@/lib/parks';
 import { CATEGORY_LABEL, initials, trackPartner, type Partner } from '@/lib/partners';
+import { makeStyles, useTheme } from '@/lib/theme';
 import { ebikeRule, TRAIL_PASS_URL, VERDICT_LABEL, verdictFor, type Trail } from '@/lib/trails';
 
 interface Props {
@@ -42,6 +45,9 @@ export function DetailCard({
   onClose, onRouteHere,
 }: Props) {
   const { height } = useWindowDimensions();
+  const { c } = useTheme();
+  useT(); // re-render on language change
+  const styles = useStyles();
   const dist = location
     ? formatDistance(distanceMeters(location.latitude, location.longitude, target.latitude, target.longitude))
     : null;
@@ -69,11 +75,11 @@ export function DetailCard({
     <View style={styles.card} accessibilityRole="summary">
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>{kicker(selection)}{dist ? `  ·  ${dist} away` : ''}</Text>
+          <Text style={styles.kicker}>{kicker(selection)}{dist ? `  ·  ${t('map.away', { dist })}` : ''}</Text>
           <Text style={styles.title} numberOfLines={2} accessibilityRole="header">{name}</Text>
         </View>
-        <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close details">
-          <Ionicons name="close-circle" size={30} color={COLORS.muted} />
+        <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel={t('map.closeDetails')}>
+          <Ionicons name="close-circle" size={30} color={c.textMuted} />
         </Pressable>
       </View>
 
@@ -97,7 +103,7 @@ export function DetailCard({
       <View style={styles.actions}>
         <Action
           icon="navigate"
-          label={selection.type === 'trail' ? 'Route to trail' : 'Route here'}
+          label={selection.type === 'trail' ? t('map.routeToTrail') : t('map.routeHere')}
           primary
           onPress={() => {
             if (partner) trackPartner(partner, 'route', 'card');
@@ -105,16 +111,16 @@ export function DetailCard({
           }}
         />
         {selection.type === 'trail' && verdictFor(selection.item.rules) !== 'free' && (
-          <Action icon="ticket-outline" label="Buy a pass (if needed)" onPress={() => void Linking.openURL(TRAIL_PASS_URL)} />
+          <Action icon="ticket-outline" label={t('map.buyPass')} onPress={() => void Linking.openURL(TRAIL_PASS_URL)} />
         )}
         {selection.type === 'park' && selection.item.website && (
-          <Action icon="globe-outline" label="Park info" onPress={() => openWebsite(selection.item.website!)} />
+          <Action icon="globe-outline" label={t('map.parkInfo')} onPress={() => openWebsite(selection.item.website!)} />
         )}
-        {selection.type === 'station' && <Action icon="bicycle" label="Rent a bike" onPress={openBCycleApp} />}
+        {selection.type === 'station' && <Action icon="bicycle" label={t('map.rentBike')} onPress={openBCycleApp} />}
         {(selection.type === 'place' || selection.type === 'partner') && selection.item.phone && (
           <Action
             icon="call"
-            label="Call"
+            label={t('map.call')}
             onPress={() => {
               if (partner) trackPartner(partner, 'call', 'card');
               callPhone(selection.item.phone!);
@@ -124,14 +130,14 @@ export function DetailCard({
         {(selection.type === 'place' || selection.type === 'partner') && selection.item.website && (
           <Action
             icon="globe-outline"
-            label="Website"
+            label={t('map.website')}
             onPress={() => {
               if (partner) trackPartner(partner, 'website', 'card');
               openWebsite(selection.item.website!);
             }}
           />
         )}
-        {selection.type !== 'trail' && <Action icon="map-outline" label="Open in Maps" onPress={openInMaps} />}
+        {selection.type !== 'trail' && <Action icon="map-outline" label={t('map.openInMaps')} onPress={openInMaps} />}
       </View>
     </View>
   );
@@ -145,40 +151,47 @@ function openBCycleApp() {
 }
 
 function OpenChip({ hours }: { hours?: string | null }) {
+  const { c } = useTheme();
+  const styles = useStyles();
   const status = openStatus(hours);
-  if (!status) return hours ? <Text style={styles.line}>Hours: {hours}</Text> : null;
+  if (!status) return hours ? <Text style={styles.line}>{t('map.hours.label', { hours })}</Text> : null;
+  const openColor = c.dark ? '#A7F3D0' : '#065f46';
   return (
     <View style={[styles.openChip, status.open ? styles.openChipOpen : styles.openChipClosed]}>
-      <Ionicons name="time-outline" size={15} color={status.open ? '#065f46' : COLORS.text} />
-      <Text style={[styles.openText, status.open && { color: '#065f46' }]}>{status.text}</Text>
+      <Ionicons name="time-outline" size={15} color={status.open ? openColor : c.text} />
+      <Text style={[styles.openText, status.open && { color: openColor }]}>{status.text}</Text>
     </View>
   );
 }
 
 function StationBody({ s }: { s: BCycleStation }) {
+  const { c } = useTheme();
+  const styles = useStyles();
+  const bc = c.dark ? '#93B4F5' : COLORS.bcycle;
   const split = s.ebikes != null && s.classic != null && s.ebikes + s.classic === s.bikes;
   return (
     <View style={{ gap: 6 }}>
       <View style={styles.counts}>
         {split ? (
           <>
-            <Count value={s.ebikes!} label={s.ebikes === 1 ? 'e-bike' : 'e-bikes'} color={COLORS.bcycle} />
-            <Count value={s.classic!} label="classic" color={COLORS.bcycle} />
+            <Count value={s.ebikes!} label={t('map.count.ebikes', { count: s.ebikes! })} color={bc} />
+            <Count value={s.classic!} label={t('map.count.classic', { count: s.classic! })} color={bc} />
           </>
         ) : (
-          <Count value={s.bikes} label={s.bikes === 1 ? 'bike' : 'bikes'} color={COLORS.bcycle} />
+          <Count value={s.bikes} label={t('map.count.bikes', { count: s.bikes })} color={bc} />
         )}
-        <Count value={s.docks} label="open spots to return" color={COLORS.text} />
+        <Count value={s.docks} label={t('map.count.docks', { count: s.docks })} color={c.text} />
       </View>
-      {!s.renting && <Text style={styles.warn}>Not renting right now</Text>}
-      {!s.returning && <Text style={styles.warn}>Not accepting returns right now</Text>}
+      {!s.renting && <Text style={styles.warn}>{t('map.notRenting')}</Text>}
+      {!s.returning && <Text style={styles.warn}>{t('map.notReturning')}</Text>}
       {s.address ? <Text style={styles.line}>{s.address}</Text> : null}
-      <Text style={styles.help}>Unlock in the BCycle app · return to any station with open docks</Text>
+      <Text style={styles.help}>{t('map.bcycleHelp')}</Text>
       <Pressable onPress={() => void Linking.openURL(BCYCLE_PRICING_URL)} accessibilityRole="link" hitSlop={8} style={styles.linkRow}>
-        <Text style={styles.link}>See BCycle prices</Text>
+        <Text style={styles.link}>{t('map.bcyclePrices')}</Text>
       </Pressable>
       <Text style={styles.source}>
-        Live from Madison BCycle{s.lastReported ? ` · station reported ${timeAgo(s.lastReported * 1000)}` : ''}
+        {t('map.liveFrom')}
+        {s.lastReported ? ` · ${t('map.stationReported', { ago: timeAgo(s.lastReported * 1000) })}` : ''}
       </Text>
     </View>
   );
@@ -187,76 +200,90 @@ function StationBody({ s }: { s: BCycleStation }) {
 function Body({ selection }: { selection: Selection }) {
   if (selection.type === 'partner') return <PartnerBody partner={selection.item} />;
   if (selection.type === 'station') return <StationBody s={selection.item} />;
+  return <PlaceBody selection={selection} />;
+}
+
+function PlaceBody({ selection }: { selection: Selection }) {
+  const styles = useStyles();
   if (selection.type !== 'place') return null;
   const p = selection.item;
   return (
     <View style={{ gap: 4 }}>
       <OpenChip hours={p.hours} />
-      {p.details.length > 0 && <Text style={styles.line}>{p.details.join('  ·  ')}</Text>}
+      {p.details.length > 0 && <Text style={styles.line}>{p.details.map(detailLabel).join('  ·  ')}</Text>}
       {p.address ? <Text style={styles.line}>{p.address}</Text> : null}
-      <Text style={styles.source}>Source: OpenStreetMap{p.hours ? ' · confirm hours before you go' : ''}</Text>
+      <Text style={styles.source}>{t('map.sourceOsm')}{p.hours ? ` · ${t('map.confirmHours')}` : ''}</Text>
     </View>
   );
 }
 
 function ParkBody({ trails, onRetry }: { trails?: Props['parkTrails']; onRetry?: () => void }) {
-  const bikeCount = trails?.trails.filter((t) => t.access === 'bike').length ?? 0;
+  const { c } = useTheme();
+  const styles = useStyles();
+  const bikeCount = trails?.trails.filter((pt) => pt.access === 'bike').length ?? 0;
   return (
     <View style={{ gap: 8 }}>
       <View style={styles.rules}>
-        <Text style={styles.rulesTitle} accessibilityRole="header">Good to know</Text>
-        <Rule icon="car-outline" text="Cars stopping in Wisconsin state parks need a vehicle admission pass." />
-        <Rule icon="ticket-outline" text="Biking some park trails needs a state trail pass (age 16+, $5/day or $25/year). Check signs at the trailhead." />
+        <Text style={styles.rulesTitle} accessibilityRole="header">{t('map.goodToKnow')}</Text>
+        <Rule icon="car-outline" text={t('map.park.carPass')} />
+        <Rule icon="ticket-outline" text={t('map.park.trailPass')} />
       </View>
 
       <Text style={styles.sectionTitle} accessibilityRole="header">
-        Trails in this park
-        {trails?.state === 'ready' ? `  ·  ${trails.trails.length} mapped${bikeCount ? `, ${bikeCount} open to bikes` : ''}` : ''}
+        {t('map.park.trailsTitle')}
+        {trails?.state === 'ready'
+          ? `  ·  ${t('map.park.mapped', { count: trails.trails.length })}${bikeCount ? `, ${t('map.park.openToBikes', { count: bikeCount })}` : ''}`
+          : ''}
       </Text>
-      {(!trails || trails.state === 'loading') && <Text style={styles.muted}>Loading trails…</Text>}
+      {(!trails || trails.state === 'loading') && <Text style={styles.muted}>{t('map.park.loading')}</Text>}
       {trails?.state === 'error' && (
         <Pressable onPress={onRetry} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }}>
-          <Text style={styles.warn}>Couldn&apos;t load trails. Tap to retry.</Text>
+          <Text style={styles.warn}>{t('map.park.error')}</Text>
         </Pressable>
       )}
       {trails?.state === 'ready' && trails.trails.length === 0 && (
-        <Text style={styles.muted}>No named trails are mapped here yet.</Text>
+        <Text style={styles.muted}>{t('map.park.none')}</Text>
       )}
       {trails?.state === 'ready' &&
-        trails.trails.map((t) => (
-          <View key={t.name} style={styles.parkTrail}>
+        trails.trails.map((pt) => (
+          <View key={pt.name} style={styles.parkTrail}>
             <Ionicons
-              name={t.access === 'bike' ? 'bicycle' : t.access === 'no_bike' ? 'walk' : 'help-circle-outline'}
+              name={pt.access === 'bike' ? 'bicycle' : pt.access === 'no_bike' ? 'walk' : 'help-circle-outline'}
               size={18}
-              color={t.access === 'bike' ? COLORS.pathPaved : COLORS.muted}
+              color={pt.access === 'bike' ? (c.dark ? c.success : COLORS.pathPaved) : c.textMuted}
             />
             <View style={{ flex: 1 }}>
-              <Text style={styles.parkTrailName}>{t.name}</Text>
+              <Text style={styles.parkTrailName}>{pt.name}</Text>
               <Text style={styles.muted}>
-                {formatDistance(t.lengthM)}
+                {formatDistance(pt.lengthM)}
                 {'  ·  '}
-                {t.access === 'bike' ? (t.mtb ? 'Mountain bike trail' : 'Bikes allowed (check signs)') : t.access === 'no_bike' ? 'Hiking only' : 'Check signs for bikes'}
-                {t.surface ? `  ·  ${t.surface.replace(/_/g, ' ')}` : ''}
+                {pt.access === 'bike'
+                  ? t(pt.mtb ? 'map.park.mtb' : 'map.park.bikesOk')
+                  : t(pt.access === 'no_bike' ? 'map.park.hikingOnly' : 'map.park.checkSigns')}
+                {pt.surface ? `  ·  ${pt.surface.replace(/_/g, ' ')}` : ''}
               </Text>
             </View>
           </View>
         ))}
-      <Text style={styles.source}>Map data: OpenStreetMap contributors · park rules: WI DNR</Text>
+      <Text style={styles.source}>{t('map.park.source')}</Text>
     </View>
   );
 }
 
 function SponsoredBadge({ demo }: { demo?: boolean }) {
+  const { c } = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.partnerBadge}>
-      <Ionicons name="star" size={13} color={BRAND.navy} />
-      <Text style={styles.partnerBadgeText}>Sponsored{demo ? ' · sample' : ''}</Text>
+      <Ionicons name="star" size={13} color={c.onGold} />
+      <Text style={styles.partnerBadgeText}>{demo ? t('map.sponsoredSample') : t('common.sponsored')}</Text>
     </View>
   );
 }
 
 function PartnerBody({ partner }: { partner: Partner }) {
   const [passOpen, setPassOpen] = useState(false);
+  const styles = useStyles();
   return (
     <View style={{ gap: 8 }}>
       {partner.photo_url ? (
@@ -267,7 +294,7 @@ function PartnerBody({ partner }: { partner: Partner }) {
       <OpenChip hours={partner.hours} />
       {partner.offer ? (
         <View style={styles.offer}>
-          <Text style={styles.offerLabel}>Rider offer</Text>
+          <Text style={styles.offerLabel}>{t('map.riderOffer')}</Text>
           <Text style={styles.offerText}>{partner.offer}</Text>
           <Pressable
             style={({ pressed }) => [styles.offerButton, pressed && { opacity: 0.8 }]}
@@ -276,14 +303,14 @@ function PartnerBody({ partner }: { partner: Partner }) {
               setPassOpen(true);
             }}
             accessibilityRole="button"
-            accessibilityHint="Opens a full-screen pass to show staff">
+            accessibilityHint={t('map.useOfferHint')}>
             <Ionicons name="pricetag" size={16} color="#fff" />
-            <Text style={styles.offerButtonText}>Use offer</Text>
+            <Text style={styles.offerButtonText}>{t('map.useOffer')}</Text>
           </Pressable>
         </View>
       ) : null}
       {partner.address ? <Text style={styles.muted}>{partner.address}</Text> : null}
-      <Text style={styles.source}>Sponsored listing</Text>
+      <Text style={styles.source}>{t('map.sponsoredListing')}</Text>
       {partner.offer ? <OfferPass partner={partner} visible={passOpen} onClose={() => setPassOpen(false)} /> : null}
     </View>
   );
@@ -311,9 +338,15 @@ function TrailBody({ trail, isEbikeRider, ebikeClass, sponsor, trailPartners, on
   onOpenPartner?: (p: Partner) => void;
 }) {
   const [ebikeOpen, setEbikeOpen] = useState(false);
+  const { c } = useTheme();
+  const styles = useStyles();
   const paved = trail.unpavedShare < 0.1;
   const unpaved = trail.unpavedShare > 0.9;
-  const surfaceText = paved ? 'Paved' : unpaved ? 'Unpaved (gravel or crushed stone)' : `Mixed, ${Math.round(trail.unpavedShare * 100)}% unpaved`;
+  const surfaceText = paved
+    ? t('map.surface.paved')
+    : unpaved
+      ? t('map.surface.unpavedLong')
+      : t('map.surface.mixed', { pct: Math.round(trail.unpavedShare * 100) });
   const r = trail.rules;
   const verdict = verdictFor(r);
   const ebikeText = ebikeRule(r, isEbikeRider ? ebikeClass : null);
@@ -323,10 +356,10 @@ function TrailBody({ trail, isEbikeRider, ebikeClass, sponsor, trailPartners, on
     return (
       <View style={{ gap: 6 }}>
         <View style={styles.stats}>
-          <Stat label="Length mapped" value={formatDistance(trail.lengthM)} />
+          <Stat label={t('map.lengthMapped')} value={formatDistance(trail.lengthM)} />
         </View>
-        <Text style={styles.line}>On-street bike lane. Ride with traffic.</Text>
-        <Text style={styles.source}>Map data: OpenStreetMap contributors</Text>
+        <Text style={styles.line}>{t('map.laneNote')}</Text>
+        <Text style={styles.source}>{t('map.osmSource')}</Text>
       </View>
     );
   }
@@ -335,15 +368,15 @@ function TrailBody({ trail, isEbikeRider, ebikeClass, sponsor, trailPartners, on
     <View style={{ gap: 8 }}>
       <View style={styles.rules}>
         <View style={styles.rulesHead}>
-          <Text style={styles.rulesTitle} accessibilityRole="header">Can I ride here?</Text>
+          <Text style={styles.rulesTitle} accessibilityRole="header">{t('map.canIRide')}</Text>
           <View
             style={[styles.verdict, verdict === 'free' ? styles.verdictFree : styles.verdictPass]}
-            accessibilityLabel={`Trail pass: ${VERDICT_LABEL[verdict]}`}>
+            accessibilityLabel={t('map.trailPassA11y', { verdict: VERDICT_LABEL[verdict] })}>
             <Text style={[styles.verdictText, verdict === 'free' && { color: '#fff' }]}>{VERDICT_LABEL[verdict]}</Text>
           </View>
         </View>
-        <Rule icon="checkmark-circle" text="Bikes welcome" strong color={COLORS.pathPaved} />
-        <Rule icon="ticket-outline" text={r ? r.pass : 'No trail pass needed.'} highlight={!!r} />
+        <Rule icon="checkmark-circle" text={t('map.bikesWelcome')} strong color={c.dark ? c.success : COLORS.pathPaved} />
+        <Rule icon="ticket-outline" text={r ? r.pass : t('map.noPass')} highlight={!!r} />
         {isEbikeRider ? (
           <Rule icon="flash-outline" text={ebikeText} highlight />
         ) : (
@@ -353,65 +386,65 @@ function TrailBody({ trail, isEbikeRider, ebikeClass, sponsor, trailPartners, on
               style={styles.disclosure}
               accessibilityRole="button"
               accessibilityState={{ expanded: ebikeOpen }}>
-              <Ionicons name="flash-outline" size={16} color={COLORS.muted} />
-              <Text style={styles.disclosureText}>E-bike rules</Text>
-              <Ionicons name={ebikeOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.muted} />
+              <Ionicons name="flash-outline" size={16} color={c.textMuted} />
+              <Text style={styles.disclosureText}>{t('map.ebikeRules')}</Text>
+              <Ionicons name={ebikeOpen ? 'chevron-up' : 'chevron-down'} size={16} color={c.textMuted} />
             </Pressable>
             {ebikeOpen && <Rule icon="information-circle-outline" text={ebikeText} />}
           </>
         )}
         {r ? (
           <Pressable onPress={() => void Linking.openURL(r.url)} accessibilityRole="link" style={styles.linkRow}>
-            <Text style={styles.link}>Rules from {r.manager} · checked Oct 2026</Text>
+            <Text style={styles.link}>{t('map.rulesFrom', { manager: r.manager })}</Text>
           </Pressable>
         ) : null}
       </View>
 
       <View style={styles.stats}>
-        <Stat label="Length mapped" value={formatDistance(trail.lengthM)} />
-        <Stat label="Surface" value={surfaceText} />
+        <Stat label={t('map.lengthMapped')} value={formatDistance(trail.lengthM)} />
+        <Stat label={t('map.surface')} value={surfaceText} />
       </View>
-      {trail.surface ? <Text style={styles.muted}>Mostly {trail.surface.replace(/_/g, ' ')}</Text> : null}
+      {trail.surface ? <Text style={styles.muted}>{t('map.mostly', { surface: trail.surface.replace(/_/g, ' ') })}</Text> : null}
 
       {sponsor && (
         <Pressable
           style={styles.sponsor}
           onPress={() => onOpenPartner?.(sponsor)}
           accessibilityRole="button"
-          accessibilityLabel={`Sponsored: presented by ${sponsor.name}`}>
+          accessibilityLabel={t('map.presentedByA11y', { name: sponsor.name })}>
           <PartnerMark partner={sponsor} size={24} />
           <Text style={styles.sponsorText} numberOfLines={2}>
-            Presented by <Text style={{ fontFamily: FONT.bold }}>{sponsor.name}</Text>
-            {sponsor.demo ? ' (sample)' : ''} · Sponsored
+            {t('map.presentedBy')} <Text style={{ fontFamily: FONT.bold }}>{sponsor.name}</Text>
+            {sponsor.demo ? ` ${t('map.sampleTag')}` : ''} · {t('common.sponsored')}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color={COLORS.muted} />
+          <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
         </Pressable>
       )}
 
       {others.length > 0 && (
         <View style={{ gap: 4 }}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">Nearby on this trail</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">{t('map.nearbyOnTrail')}</Text>
           {others.map(({ partner: p, meters }) => (
             <Pressable
               key={p.id}
               style={styles.trailPartner}
               onPress={() => onOpenPartner?.(p)}
               accessibilityRole="button"
-              accessibilityLabel={`Sponsored: ${p.name}, ${formatDistance(meters)} off the trail`}>
+              accessibilityLabel={t('map.offTrailA11y', { name: p.name, dist: formatDistance(meters) })}>
               <PartnerMark partner={p} size={30} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.parkTrailName} numberOfLines={1}>{p.name}{p.demo ? ' (sample)' : ''}</Text>
+                <Text style={styles.parkTrailName} numberOfLines={1}>{p.name}{p.demo ? ` ${t('map.sampleTag')}` : ''}</Text>
                 <Text style={styles.muted} numberOfLines={2}>
-                  {meters < 60 ? 'On the trail' : `${formatDistance(meters)} off the trail`}
+                  {meters < 60 ? t('map.onTrail') : t('map.offTrail', { dist: formatDistance(meters) })}
                   {p.offer ? `  ·  ${p.offer}` : ''}
                 </Text>
               </View>
-              <View style={styles.partnerBadgeSmall}><Text style={styles.partnerBadgeText}>Sponsored</Text></View>
+              <View style={styles.partnerBadgeSmall}><Text style={styles.partnerBadgeText}>{t('common.sponsored')}</Text></View>
             </Pressable>
           ))}
         </View>
       )}
-      <Text style={styles.source}>Map data: OpenStreetMap contributors</Text>
+      <Text style={styles.source}>{t('map.osmSource')}</Text>
     </View>
   );
 }
@@ -419,15 +452,18 @@ function TrailBody({ trail, isEbikeRider, ebikeClass, sponsor, trailPartners, on
 function Rule({ icon, text, highlight, strong, color }: {
   icon: keyof typeof Ionicons.glyphMap; text: string; highlight?: boolean; strong?: boolean; color?: string;
 }) {
+  const { c } = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.rule}>
-      <Ionicons name={icon} size={18} color={color ?? (highlight ? '#92400e' : COLORS.muted)} style={{ marginTop: 1 }} />
+      <Ionicons name={icon} size={18} color={color ?? (highlight ? (c.dark ? c.gold : '#92400e') : c.textMuted)} style={{ marginTop: 1 }} />
       <Text style={[styles.ruleText, (highlight || strong) && { fontFamily: FONT.bold }]}>{text}</Text>
     </View>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
+  const styles = useStyles();
   return (
     <View style={{ flex: 1 }}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -437,6 +473,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function Count({ value, label, color }: { value: number; label: string; color: string }) {
+  const styles = useStyles();
   return (
     <View style={{ flexShrink: 1 }}>
       <Text style={[styles.countValue, { color }]}>{value}</Text>
@@ -446,13 +483,15 @@ function Count({ value, label, color }: { value: number; label: string; color: s
 }
 
 function Action({ icon, label, onPress, primary }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; primary?: boolean }) {
+  const { c } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       style={({ pressed }) => [styles.action, primary && styles.actionPrimary, pressed && { opacity: 0.7 }]}>
-      <Ionicons name={icon} size={16} color={primary ? '#fff' : COLORS.brand} />
-      <Text style={[styles.actionText, primary && { color: '#fff' }]}>{label}</Text>
+      <Ionicons name={icon} size={16} color={primary ? c.onPrimary : c.primary} />
+      <Text style={[styles.actionText, primary && { color: c.onPrimary }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -475,11 +514,11 @@ export function selectionCenter(s: Selection, pathCoords?: [number, number][]): 
 }
 
 function kicker(s: Selection): string {
-  if (s.type === 'station') return 'BCycle station';
-  if (s.type === 'partner') return CATEGORY_LABEL[s.item.category] ?? 'Local business';
-  if (s.type === 'park') return /recreation area/i.test(s.item.name) ? 'State recreation area' : 'Wisconsin state park';
+  if (s.type === 'station') return t('map.kicker.station');
+  if (s.type === 'partner') return CATEGORY_LABEL[s.item.category] ?? t('map.category.other');
+  if (s.type === 'park') return /recreation area/i.test(s.item.name) ? t('map.kicker.recArea') : t('map.kicker.statePark');
   if (s.type === 'place') return PLACE_META[s.item.kind].label;
-  return s.item.kind === 'lane' ? 'Bike lane' : PATH_META[s.item.kind].label;
+  return s.item.kind === 'lane' ? t('map.kicker.bikeLane') : PATH_META[s.item.kind].label;
 }
 
 function title(s: Selection): string {
@@ -487,79 +526,79 @@ function title(s: Selection): string {
   if (s.type === 'partner') return s.item.name;
   if (s.type === 'park') return s.item.name;
   if (s.type === 'place') return s.item.name ?? PLACE_META[s.item.kind].fallbackName;
-  return s.item.name ?? (s.item.kind === 'lane' ? 'Bike lane' : 'Unnamed path');
+  return s.item.name ?? (s.item.kind === 'lane' ? t('map.kicker.bikeLane') : t('map.kicker.unnamedPath'));
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   card: {
-    backgroundColor: COLORS.bg,
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 16,
     gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
+    shadowColor: c.shadow,
+    shadowOpacity: c.dark ? 0.5 : 0.15,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  kicker: { fontSize: 13, fontFamily: FONT.bold, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6 },
-  title: { fontSize: 20, fontFamily: FONT.black, color: COLORS.text, marginTop: 2 },
-  line: { fontSize: 15, color: COLORS.text, marginTop: 2 },
-  muted: { fontSize: 14, color: COLORS.muted },
-  help: { fontSize: 14, color: COLORS.text, lineHeight: 19 },
-  source: { fontSize: 13, color: COLORS.muted, marginTop: 6 },
-  warn: { fontSize: 14, color: '#b91c1c', fontWeight: '600', marginTop: 2 },
+  kicker: { fontSize: 13, fontFamily: FONT.bold, color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
+  title: { fontSize: 20, fontFamily: FONT.black, color: c.text, marginTop: 2 },
+  line: { fontSize: 15, color: c.text, marginTop: 2 },
+  muted: { fontSize: 14, color: c.textMuted },
+  help: { fontSize: 14, color: c.text, lineHeight: 19 },
+  source: { fontSize: 13, color: c.textMuted, marginTop: 6 },
+  warn: { fontSize: 14, color: c.danger, fontWeight: '600', marginTop: 2 },
   counts: { flexDirection: 'row', gap: 24, marginVertical: 4 },
   countValue: { fontSize: 32, fontFamily: FONT.black },
-  countLabel: { fontSize: 14, color: COLORS.muted },
+  countLabel: { fontSize: 14, color: c.textMuted },
   stats: { flexDirection: 'row', gap: 12 },
-  statLabel: { fontSize: 13, color: COLORS.muted },
-  statValue: { fontSize: 16, fontFamily: FONT.black, color: COLORS.text, marginTop: 2 },
-  sectionTitle: { fontSize: 15, fontFamily: FONT.black, color: COLORS.text, marginTop: 4 },
+  statLabel: { fontSize: 13, color: c.textMuted },
+  statValue: { fontSize: 16, fontFamily: FONT.black, color: c.text, marginTop: 2 },
+  sectionTitle: { fontSize: 15, fontFamily: FONT.black, color: c.text, marginTop: 4 },
   parkTrail: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
-  parkTrailName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  parkTrailName: { fontSize: 15, fontWeight: '600', color: c.text },
   sponsor: {
     flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingVertical: 6,
-    borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: COLORS.border,
+    borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: c.border,
   },
-  sponsorText: { flex: 1, fontSize: 14, color: COLORS.text },
+  sponsorText: { flex: 1, fontSize: 14, color: c.text },
   trailPartner: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingVertical: 4 },
-  photo: { width: '100%', height: 140, borderRadius: 12, backgroundColor: '#f3f4f6' },
+  photo: { width: '100%', height: 140, borderRadius: 12, backgroundColor: c.surfaceAlt },
   partnerBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', backgroundColor: BRAND.gold,
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', backgroundColor: c.gold,
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
   },
-  partnerBadgeSmall: { backgroundColor: BRAND.gold, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  partnerBadgeText: { fontSize: 13, fontFamily: FONT.bold, color: BRAND.navy },
+  partnerBadgeSmall: { backgroundColor: c.gold, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  partnerBadgeText: { fontSize: 13, fontFamily: FONT.bold, color: c.onGold },
   openChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
   },
-  openChipOpen: { backgroundColor: '#d1fae5' },
-  openChipClosed: { backgroundColor: BRAND.limestone },
-  openText: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.text },
-  offer: { backgroundColor: '#ecfdf5', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#a7f3d0', gap: 6 },
-  offerLabel: { fontSize: 13, fontFamily: FONT.bold, color: '#065f46', textTransform: 'uppercase', letterSpacing: 0.6 },
-  offerText: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  openChipOpen: { backgroundColor: c.dark ? '#064E3B' : '#d1fae5' },
+  openChipClosed: { backgroundColor: c.surfaceAlt },
+  openText: { fontSize: 14, fontFamily: FONT.bold, color: c.text },
+  offer: { backgroundColor: c.dark ? '#052E22' : '#ecfdf5', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: c.dark ? '#065F46' : '#a7f3d0', gap: 6 },
+  offerLabel: { fontSize: 13, fontFamily: FONT.bold, color: c.dark ? '#A7F3D0' : '#065f46', textTransform: 'uppercase', letterSpacing: 0.6 },
+  offerText: { fontSize: 15, fontWeight: '600', color: c.text },
   offerButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'flex-start',
     minHeight: 44, paddingHorizontal: 16, borderRadius: 999, backgroundColor: '#065f46', marginTop: 2,
   },
   offerButtonText: { fontSize: 15, fontFamily: FONT.bold, color: '#fff' },
-  rules: { backgroundColor: '#fffbeb', borderRadius: 12, padding: 12, gap: 8 },
+  rules: { backgroundColor: c.dark ? '#2A2110' : '#fffbeb', borderRadius: 12, padding: 12, gap: 8 },
   rulesHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
-  rulesTitle: { fontSize: 16, fontFamily: FONT.black, color: '#92400e' },
+  rulesTitle: { fontSize: 16, fontFamily: FONT.black, color: c.dark ? c.gold : '#92400e' },
   verdict: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   verdictFree: { backgroundColor: COLORS.pathPaved },
-  verdictPass: { backgroundColor: BRAND.gold },
-  verdictText: { fontSize: 14, fontFamily: FONT.black, color: BRAND.navy },
+  verdictPass: { backgroundColor: c.gold },
+  verdictText: { fontSize: 14, fontFamily: FONT.black, color: c.onGold },
   rule: { flexDirection: 'row', gap: 8 },
-  ruleText: { flex: 1, fontSize: 15, color: COLORS.text, lineHeight: 20 },
+  ruleText: { flex: 1, fontSize: 15, color: c.text, lineHeight: 20 },
   disclosure: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
-  disclosureText: { flex: 1, fontSize: 15, fontFamily: FONT.bold, color: COLORS.text },
+  disclosureText: { flex: 1, fontSize: 15, fontFamily: FONT.bold, color: c.text },
   linkRow: { minHeight: 44, justifyContent: 'center' },
-  link: { fontSize: 14, color: COLORS.brand, textDecorationLine: 'underline' },
+  link: { fontSize: 14, color: c.primary, textDecorationLine: 'underline' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' },
   action: {
     flexDirection: 'row',
@@ -569,8 +608,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.brand,
+    borderColor: c.primary,
   },
-  actionPrimary: { backgroundColor: COLORS.brand },
-  actionText: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.brand },
-});
+  actionPrimary: { backgroundColor: c.primary },
+  actionText: { fontSize: 15, fontFamily: FONT.bold, color: c.primary },
+}));

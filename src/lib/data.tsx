@@ -7,6 +7,7 @@ import { Alert, AppState, Linking } from 'react-native';
 
 import { fetchBCycle, type BCycleStation } from './bcycle';
 import { cached } from './cache';
+import { t } from './i18n';
 import { BCYCLE_REFRESH_MS, CACHE_TTL } from './config';
 import { fetchFood, fetchPaths, fetchPlaces, type BikePath, type FoodKind, type Place } from './osm';
 import { fetchParks, type Park } from './parks';
@@ -280,9 +281,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (!current.canAskAgain) {
           setLocationStatus('denied');
           if (!opts?.quiet) {
-            Alert.alert('Location is off', 'Turn on location for Ride Madison in Settings to see what’s near you and route from where you are.', [
-              { text: 'Not now', style: 'cancel' },
-              { text: 'Open Settings', onPress: openLocationSettings },
+            Alert.alert(t('map.loc.offTitle'), t('map.loc.offBody'), [
+              { text: t('common.notNow'), style: 'cancel' },
+              { text: t('common.openSettings'), onPress: openLocationSettings },
             ]);
           }
           return false;
@@ -290,11 +291,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (opts?.quiet && declinedThisLaunch.current) return false;
         const go = await new Promise<boolean>((resolve) => {
           Alert.alert(
-            'Use your location?',
-            'Ride Madison uses your location to show nearby paths and plan routes from where you are.',
+            t('map.loc.askTitle'),
+            t('map.loc.askBody'),
             [
-              { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
-              { text: 'Continue', onPress: () => resolve(true) },
+              { text: t('common.notNow'), style: 'cancel', onPress: () => resolve(false) },
+              { text: t('common.continue'), onPress: () => resolve(true) },
             ],
             { cancelable: true, onDismiss: () => resolve(false) },
           );

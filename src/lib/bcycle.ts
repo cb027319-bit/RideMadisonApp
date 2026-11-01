@@ -2,6 +2,7 @@
 // Station locations change rarely; bike/dock counts update every minute or so.
 
 import { BCYCLE_GBFS_URL, USER_AGENT } from './config';
+import { t } from './i18n';
 
 export interface BCycleStation {
   id: string;
@@ -115,13 +116,12 @@ export async function fetchBCycle(): Promise<BCycleStation[]> {
 
 /** "3 e-bikes · 2 classic", "4 bikes" or "1 e-bike": what's ready to rent. */
 export function bikeSummary(s: Pick<BCycleStation, 'bikes' | 'ebikes' | 'classic'>): string {
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   if (s.ebikes != null && s.classic != null && s.ebikes + s.classic === s.bikes && s.bikes > 0) {
-    if (s.classic === 0) return plural(s.ebikes, 'e-bike', 'e-bikes');
-    if (s.ebikes === 0) return plural(s.classic, 'classic bike', 'classic bikes');
-    return `${plural(s.ebikes, 'e-bike', 'e-bikes')} · ${s.classic} classic`;
+    if (s.classic === 0) return t('map.bikes.ebikes', { count: s.ebikes });
+    if (s.ebikes === 0) return t('map.bikes.classicBikes', { count: s.classic });
+    return t('map.bikes.mixed', { ebikes: t('map.bikes.ebikes', { count: s.ebikes }), classic: s.classic });
   }
-  return plural(s.bikes, 'bike', 'bikes');
+  return t('map.bikes.bikes', { count: s.bikes });
 }
 
 export const BCYCLE_PRICING_URL = 'https://madison.bcycle.com/pricing';

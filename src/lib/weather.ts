@@ -1,6 +1,7 @@
 // Ride weather from Open-Meteo (free, no key): temperature, wind, rain, sunset.
 
 import { USER_AGENT } from './config';
+import { locale, t } from './i18n';
 
 export interface RideWeather {
   tempF: number;
@@ -9,24 +10,43 @@ export interface RideWeather {
   windFrom: string; // compass point the wind blows FROM
   precipIn: number;
   code: number;
-  sunset?: string; // "5:47 PM"
+  /** Sunset, minutes after local midnight; format with formatSunset(). */
+  sunsetMin?: number;
   fetchedAt: number;
 }
 
 const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 export const compass = (deg: number) => POINTS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 
-/** Short words for WMO weather codes. */
+export type WeatherKind = 'clear' | 'partlyCloudy' | 'cloudy' | 'fog' | 'drizzle' | 'rain' | 'snow' | 'storms' | 'mixed';
+
+/** Stable kind for a WMO weather code (for icons). */
+export function weatherKind(code: number): WeatherKind {
+  if (code === 0) return 'clear';
+  if (code <= 2) return 'partlyCloudy';
+  if (code === 3) return 'cloudy';
+  if (code === 45 || code === 48) return 'fog';
+  if (code >= 51 && code <= 57) return 'drizzle';
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+  if (code >= 95) return 'storms';
+  return 'mixed';
+}
+
+/** Short words for WMO weather codes, in the rider's language. */
 export function describe(code: number): string {
-  if (code === 0) return 'Clear';
-  if (code <= 2) return 'Partly cloudy';
-  if (code === 3) return 'Cloudy';
-  if (code === 45 || code === 48) return 'Fog';
-  if (code >= 51 && code <= 57) return 'Drizzle';
-  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'Rain';
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'Snow';
-  if (code >= 95) return 'Storms';
-  return 'Mixed';
+  return t(`map.weather.${weatherKind(code)}`);
+}
+
+/** Compass point in the rider's language ("SW" / "SO"). */
+export function compassLabel(point: string): string {
+  return t(`map.compass.${point}`);
+}
+
+/** "5:47 PM" / "5:47 p. m." */
+export function formatSunset(minutes: number): string {
+  const d = new Date(2000, 0, 1, Math.floor(minutes / 60), minutes % 60);
+  return d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
 }
 
 interface OpenMeteo {
@@ -45,13 +65,13 @@ export function parseWeather(j: OpenMeteo, now = Date.now()): RideWeather {
   const c = j.current;
   if (!c || c.temperature_2m == null) throw new Error('No weather data');
   const sunsetIso = j.daily?.sunset?.[0];
-  let sunset: string | undefined;
+  let sunsetMin: number | undefined;
   if (sunsetIso) {
     // Local time string like "2026-10-31T17:47" (timezone=America/Chicago)
     const [, hm] = sunsetIso.split('T');
     if (hm) {
       const [h, m] = hm.split(':').map(Number);
-      sunset = `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+      if (Number.isFinite(h) && Number.isFinite(m)) sunsetMin = h * 60 + m;
     }
   }
   return {
@@ -61,7 +81,7 @@ export function parseWeather(j: OpenMeteo, now = Date.now()): RideWeather {
     windFrom: compass(c.wind_direction_10m ?? 0),
     precipIn: c.precipitation ?? 0,
     code: c.weather_code ?? 0,
-    sunset,
+    sunsetMin,
     fetchedAt: now,
   };
 }
