@@ -8,7 +8,7 @@ import { AppState } from 'react-native';
 import { fetchBCycle, type BCycleStation } from './bcycle';
 import { cached } from './cache';
 import { BCYCLE_REFRESH_MS, CACHE_TTL } from './config';
-import { fetchFood, fetchPaths, fetchPlaces, type BikePath, type Place } from './osm';
+import { fetchFood, fetchPaths, fetchPlaces, type BikePath, type FoodKind, type Place } from './osm';
 import { fetchParks, type Park } from './parks';
 import { fetchPartners, type Partner } from './partners';
 import { groupTrails, type Trail } from './trails';
@@ -31,8 +31,9 @@ interface DataState {
   pathById: Map<string, BikePath>;
   places: Place[];
   /** Restaurants and bars load on first use (Eat/Drink tabs or map layers). */
-  foodState: LoadState | 'idle';
-  foodError: string | null;
+  /** Loading state of restaurants ('food') and bars ('drink'), loaded on demand. */
+  foodState: Record<FoodKind, LoadState | 'idle'>;
+  foodError: Record<FoodKind, string | null>;
   loadFood: (force?: boolean) => void;
   /** Paying local businesses (featured pins, trail sponsors). */
   partners: Partner[];
@@ -63,10 +64,13 @@ const Ctx = createContext<DataState | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [paths, setPaths] = useState<BikePath[]>([]);
   const [bikePlaces, setPlaces] = useState<Place[]>([]);
-  const [food, setFood] = useState<Place[]>([]);
-  const [foodState, setFoodState] = useState<LoadState | 'idle'>('idle');
-  const [foodError, setFoodError] = useState<string | null>(null);
-  const places = useMemo(() => (food.length ? [...bikePlaces, ...food] : bikePlaces), [bikePlaces, food]);
+  const [food, setFood] = useState<Record<FoodKind, Place[]>>({ food: [], drink: [] });
+  const [foodState, setFoodState] = useState<Record<FoodKind, LoadState | 'idle'>>({ food: 'idle', drink: 'idle' });
+  const [foodError, setFoodError] = useState<Record<FoodKind, string | null>>({ food: null, drink: null });
+  const places = useMemo(
+    () => (food.food.length || food.drink.length ? [...bikePlaces, ...food.food, ...food.drink] : bikePlaces),
+    [bikePlaces, food],
+  );
   const [partners, setPartners] = useState<Partner[]>([]);
   const [parks, setParks] = useState<Park[]>([]);
   const [stations, setStations] = useState<BCycleStation[]>([]);
@@ -126,18 +130,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const loadFood = useCallback(
     (force = false) => {
-      if (!force && (foodState === 'loading' || foodState === 'ready')) return;
-      setFoodState('loading');
-      setFoodError(null);
-      cached('food:v1', CACHE_TTL.places, fetchFood, { force })
-        .then((r) => {
-          setFood(r.value);
-          setFoodState('ready');
-        })
-        .catch((e: unknown) => {
-          setFoodState('error');
-          setFoodError(e instanceof Error ? e.message : String(e));
-        });
+      for (const kind of ['drink', 'food'] as FoodKind[]) {
+        if (!force && (foodState[kind] === 'loading' || foodState[kind] === 'ready')) continue;
+        setFoodState((s) => ({ ...s, [kind]: 'loading' }));
+        setFoodError((s) => ({ ...s, [kind]: null }));
+        cached(`${kind}:v2`, CACHE_TTL.places, () => fetchFood(kind), { force })
+          .then((r) => {
+            setFood((f) => ({ ...f, [kind]: r.value }));
+            setFoodState((s) => ({ ...s, [kind]: 'ready' }));
+          })
+          .catch((e: unknown) => {
+            setFoodState((s) => ({ ...s, [kind]: 'error' }));
+            setFoodError((s) => ({ ...s, [kind]: e instanceof Error ? e.message : String(e) }));
+          });
+      }
     },
     [foodState],
   );
@@ -148,7 +154,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPathsState((s) => (s === 'ready' ? s : 'loading'));
     setPlacesState((s) => (s === 'ready' ? s : 'loading'));
     setStationsState((s) => (s === 'ready' ? s : 'loading'));
-    if (foodState !== 'idle') loadFood(true);
+    if (foodState.food !== 'idle' || foodState.drink !== 'idle') loadFood(true);
     await Promise.all([loadOsm(true), refreshStations()]);
   }, [loadOsm, refreshStations, foodState, loadFood]);
 

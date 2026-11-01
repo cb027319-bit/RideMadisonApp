@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { simplify } from '../src/lib/geo';
-import { classifyWay, parsePaths, parsePlaces, pathsQuery, placesQuery, type OverpassElement } from '../src/lib/osm';
+import { classifyWay, foodQuery, parsePaths, parsePlaces, pathsQuery, placesQuery, type OverpassElement } from '../src/lib/osm';
 
 test('classifies off-street paths by surface', () => {
   assert.equal(classifyWay({ highway: 'cycleway' }), 'path_paved');
@@ -108,4 +108,14 @@ test('restaurants, cafes, bars and breweries become food and drink places', () =
   assert.deepEqual(places[0].details, ['Restaurant', 'burger, american', 'Patio']);
   assert.deepEqual(places[1].details, ['Café']);
   assert.deepEqual(places[2].details, ['Brewery']);
+});
+
+test('food and drink queries are split and well-formed', () => {
+  const f = foodQuery('food');
+  const d = foodQuery('drink');
+  assert.match(f, /restaurant\|cafe/);
+  assert.doesNotMatch(f, /\bbar\b|brewery/);
+  assert.match(d, /bar\|pub\|biergarten/);
+  assert.match(d, /brewery/);
+  assert.doesNotMatch(d, /restaurant/);
 });

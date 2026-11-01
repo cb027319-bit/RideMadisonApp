@@ -77,12 +77,20 @@ out tags center;`;
 }
 
 /** Restaurants, cafés, bars and breweries (loaded separately; it's a bigger list). */
-export function foodQuery(bounds = COVERAGE_BBOX): string {
+export type FoodKind = 'food' | 'drink';
+
+/** Restaurants and cafés ('food') or bars, pubs and breweries ('drink'). Split in two so
+ *  each request stays small enough for the public servers to answer reliably. */
+export function foodQuery(kind: FoodKind, bounds = COVERAGE_BBOX): string {
   const b = bboxClause(bounds);
-  return `[out:json][timeout:120];
+  const body =
+    kind === 'food'
+      ? `nw["amenity"~"^(restaurant|cafe|fast_food|ice_cream)$"]["name"](${b});`
+      : `nw["amenity"~"^(bar|pub|biergarten)$"]["name"](${b});
+  nw["craft"~"^(brewery|winery|distillery)$"]["name"](${b});`;
+  return `[out:json][timeout:90];
 (
-  nwr["amenity"~"^(restaurant|cafe|fast_food|ice_cream|bar|pub|biergarten)$"]["name"](${b});
-  nwr["craft"~"^(brewery|winery|distillery)$"]["name"](${b});
+  ${body}
 );
 out tags center;`;
 }
@@ -240,12 +248,12 @@ export async function overpassQuery(query: string): Promise<{ elements?: unknown
   return overpass(query);
 }
 
-async function overpass(query: string): Promise<{ elements?: OverpassElement[] }> {
+async function overpass(query: string, timeoutMs = 60000): Promise<{ elements?: OverpassElement[] }> {
   const errors: string[] = [];
   for (const url of OVERPASS_URLS) {
     const host = url.split('/')[2];
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -259,7 +267,11 @@ async function overpass(query: string): Promise<{ elements?: OverpassElement[] }
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as { elements?: OverpassElement[]; remark?: string };
-      if (!json.elements?.length && json.remark) throw new Error(json.remark.slice(0, 80));
+      // A busy server can answer 200 with a partial list plus a warning: treat that as a
+      // failure so a half-empty list is never shown or cached.
+      if (json.remark && (!json.elements?.length || /runtime error|timed? ?out|out of memory/i.test(json.remark))) {
+        throw new Error(json.remark.slice(0, 80));
+      }
       return json;
     } catch (err) {
       const msg = err instanceof Error ? (err.name === 'AbortError' ? 'timed out' : err.message) : String(err);
@@ -279,6 +291,9 @@ export async function fetchPlaces(): Promise<Place[]> {
   return parsePlaces(await overpass(placesQuery()));
 }
 
-export async function fetchFood(): Promise<Place[]> {
-  return parsePlaces(await overpass(foodQuery())).filter((p) => p.kind === 'food' || p.kind === 'drink');
+export async function fetchFood(kind: FoodKind): Promise<Place[]> {
+  const list = parsePlaces(await overpass(foodQuery(kind), 30000)).filter((p) => p.kind === kind);
+  // Greater Madison always has hundreds of each: an empty answer means something went wrong.
+  if (!list.length) throw new Error('No places came back');
+  return list;
 }

@@ -31,7 +31,7 @@ interface Row {
 }
 
 export default function NearbyScreen() {
-  const { stations, places, partners, foodState, foodError, loadFood, location, locationDenied, stationsUpdatedAt, refreshStations, focus } = useData();
+  const { stations, places, partners, foodState, foodError, loadFood, location, locationDenied, stationsUpdatedAt, refreshAll, focus } = useData();
   const [tab, setTab] = useState<Tab>('bcycle');
   const [refreshing, setRefreshing] = useState(false);
   const origin = location ?? MADISON_CENTER;
@@ -79,7 +79,8 @@ export default function NearbyScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refreshStations();
+    if (tab === 'food' || tab === 'drink') loadFood(true);
+    else await refreshAll();
     setRefreshing(false);
   };
 
@@ -87,6 +88,23 @@ export default function NearbyScreen() {
     focus(row.selection);
     router.navigate('/');
   };
+
+  // Loading / error message for Eat and Drink. Shown under any partner rows too, so a
+  // sponsored listing never hides that the rest of the list is still loading.
+  const foodTab = tab === 'food' || tab === 'drink' ? tab : null;
+  const what = foodTab === 'drink' ? 'bars and breweries' : 'restaurants and cafés';
+  const status =
+    foodTab && foodState[foodTab] === 'loading' ? (
+      <View style={styles.emptyBox}>
+        <ActivityIndicator color={COLORS.brand} />
+        <Text style={styles.empty}>Loading {what}… this can take up to 30 seconds the first time.</Text>
+      </View>
+    ) : foodTab && foodState[foodTab] === 'error' ? (
+      <Pressable style={styles.emptyBox} onPress={() => loadFood(true)} accessibilityRole="button">
+        <Text style={styles.empty}>Couldn&apos;t load {what}. Tap to try again.</Text>
+        {foodError[foodTab] ? <Text style={styles.errorText}>{foodError[foodTab]}</Text> : null}
+      </Pressable>
+    ) : null;
 
   return (
     <View style={styles.container}>
@@ -114,23 +132,10 @@ export default function NearbyScreen() {
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
-        refreshControl={tab === 'bcycle' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
-        ListEmptyComponent={
-          (tab === 'food' || tab === 'drink') && foodState === 'loading' ? (
-            <View style={styles.emptyBox}>
-              <ActivityIndicator color={COLORS.brand} />
-              <Text style={styles.empty}>Loading restaurants and bars… this can take up to 30 seconds the first time.</Text>
-            </View>
-          ) : (tab === 'food' || tab === 'drink') && foodState === 'error' ? (
-            <Pressable style={styles.emptyBox} onPress={() => loadFood(true)}>
-              <Text style={styles.empty}>Couldn&apos;t load restaurants and bars. Tap to try again.</Text>
-              {foodError ? <Text style={styles.errorText}>{foodError}</Text> : null}
-            </Pressable>
-          ) : (
-            <Text style={styles.empty}>Nothing to show yet. Check your connection and pull to refresh.</Text>
-          )
-        }
+        ListEmptyComponent={status ?? <Text style={styles.empty}>Nothing to show yet. Check your connection and try again.</Text>}
+        ListFooterComponent={rows.length > 0 && status ? status : undefined}
         renderItem={({ item }) => (
           <Pressable onPress={() => open(item)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: '#f3f4f6' }]}>
             <View style={{ flex: 1 }}>
