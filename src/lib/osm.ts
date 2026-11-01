@@ -72,6 +72,15 @@ export function placesQuery(bounds = COVERAGE_BBOX): string {
   nwr["amenity"="bicycle_repair_station"](${b});
   nwr["amenity"="bicycle_parking"](${b});
   node["amenity"="drinking_water"](${b});
+);
+out tags center;`;
+}
+
+/** Restaurants, cafés, bars and breweries (loaded separately; it's a bigger list). */
+export function foodQuery(bounds = COVERAGE_BBOX): string {
+  const b = bboxClause(bounds);
+  return `[out:json][timeout:120];
+(
   nwr["amenity"~"^(restaurant|cafe|fast_food|ice_cream|bar|pub|biergarten)$"]["name"](${b});
   nwr["craft"~"^(brewery|winery|distillery)$"]["name"](${b});
 );
@@ -268,4 +277,8 @@ export async function fetchPaths(): Promise<BikePath[]> {
 
 export async function fetchPlaces(): Promise<Place[]> {
   return parsePlaces(await overpass(placesQuery()));
+}
+
+export async function fetchFood(): Promise<Place[]> {
+  return parsePlaces(await overpass(foodQuery())).filter((p) => p.kind === 'food' || p.kind === 'drink');
 }

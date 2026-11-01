@@ -8,7 +8,7 @@ import { AppState } from 'react-native';
 import { fetchBCycle, type BCycleStation } from './bcycle';
 import { cached } from './cache';
 import { BCYCLE_REFRESH_MS, CACHE_TTL } from './config';
-import { fetchPaths, fetchPlaces, type BikePath, type Place } from './osm';
+import { fetchFood, fetchPaths, fetchPlaces, type BikePath, type Place } from './osm';
 import { fetchParks, type Park } from './parks';
 import { fetchPartners, type Partner } from './partners';
 import { groupTrails, type Trail } from './trails';
@@ -30,6 +30,10 @@ interface DataState {
   trailById: Map<string, Trail>;
   pathById: Map<string, BikePath>;
   places: Place[];
+  /** Restaurants and bars load on first use (Eat/Drink tabs or map layers). */
+  foodState: LoadState | 'idle';
+  foodError: string | null;
+  loadFood: (force?: boolean) => void;
   /** Paying local businesses (featured pins, trail sponsors). */
   partners: Partner[];
   /** Wisconsin state parks and recreation areas within a day trip. */
@@ -58,7 +62,11 @@ const Ctx = createContext<DataState | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [paths, setPaths] = useState<BikePath[]>([]);
-  const [places, setPlaces] = useState<Place[]>([]);
+  const [bikePlaces, setPlaces] = useState<Place[]>([]);
+  const [food, setFood] = useState<Place[]>([]);
+  const [foodState, setFoodState] = useState<LoadState | 'idle'>('idle');
+  const [foodError, setFoodError] = useState<string | null>(null);
+  const places = useMemo(() => (food.length ? [...bikePlaces, ...food] : bikePlaces), [bikePlaces, food]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [parks, setParks] = useState<Park[]>([]);
   const [stations, setStations] = useState<BCycleStation[]>([]);
@@ -75,7 +83,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const loadOsm = useCallback(async (force: boolean) => {
     // Places first: small and quick, so pins appear before the path network.
-    const placesP = cached('places:v2', CACHE_TTL.places, fetchPlaces, { force })
+    const placesP = cached('places:v1', CACHE_TTL.places, fetchPlaces, { force })
       .then((r) => {
         setPlaces(r.value);
         setPlacesState('ready');
@@ -116,14 +124,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loadFood = useCallback(
+    (force = false) => {
+      if (!force && (foodState === 'loading' || foodState === 'ready')) return;
+      setFoodState('loading');
+      setFoodError(null);
+      cached('food:v1', CACHE_TTL.places, fetchFood, { force })
+        .then((r) => {
+          setFood(r.value);
+          setFoodState('ready');
+        })
+        .catch((e: unknown) => {
+          setFoodState('error');
+          setFoodError(e instanceof Error ? e.message : String(e));
+        });
+    },
+    [foodState],
+  );
+
   const refreshAll = useCallback(async () => {
     setOfflineCopy(false);
     setLastError(null);
     setPathsState((s) => (s === 'ready' ? s : 'loading'));
     setPlacesState((s) => (s === 'ready' ? s : 'loading'));
     setStationsState((s) => (s === 'ready' ? s : 'loading'));
+    if (foodState !== 'idle') loadFood(true);
     await Promise.all([loadOsm(true), refreshStations()]);
-  }, [loadOsm, refreshStations]);
+  }, [loadOsm, refreshStations, foodState, loadFood]);
 
   // Initial load (deferred one tick so it starts after the first render).
   useEffect(() => {
@@ -194,11 +221,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<DataState>(
     () => ({
-      paths, trails, trailOfPath, trailById, pathById, places, partners, parks, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
+      paths, trails, trailOfPath, trailById, pathById, places, foodState, foodError, loadFood, partners, parks, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
       offlineCopy, lastError, location, locationDenied, selection, select: setSelection,
       focusRequest, focus, refreshAll, refreshStations,
     }),
-    [paths, trails, trailOfPath, trailById, pathById, places, partners, parks, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
+    [paths, trails, trailOfPath, trailById, pathById, places, foodState, foodError, loadFood, partners, parks, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
       offlineCopy, lastError, location, locationDenied, selection, focusRequest, focus, refreshAll, refreshStations],
   );
 

@@ -50,7 +50,7 @@ const HIGHLIGHT = '#facc15';
 export default function MapScreen() {
   const {
     paths, trailOfPath, trailById, pathById, places, partners, parks, stations, pathsState, placesState, stationsState,
-    stationsUpdatedAt, offlineCopy, lastError, location, selection, select, focusRequest, refreshAll,
+    stationsUpdatedAt, offlineCopy, lastError, location, selection, select, focusRequest, refreshAll, loadFood,
   } = useData();
   const { routeTo, requestSearch } = useRoute();
   const { prefs, loaded: prefsLoaded, setPrefs } = usePrefs();
@@ -204,7 +204,10 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion({ ...target, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 500);
   };
 
-  const toggle = (id: LayerId) => setLayers((l) => ({ ...l, [id]: !l[id] }));
+  const toggle = (id: LayerId) => {
+    if ((id === 'food' || id === 'drink') && !layers[id]) loadFood();
+    setLayers((l) => ({ ...l, [id]: !l[id] }));
+  };
 
   const targetFor = (s: Selection) => {
     if (s.type === 'trail') {

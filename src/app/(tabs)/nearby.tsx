@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { COLORS, MADISON_CENTER } from '@/lib/config';
 import { useData, type Selection } from '@/lib/data';
@@ -31,7 +31,7 @@ interface Row {
 }
 
 export default function NearbyScreen() {
-  const { stations, places, partners, location, locationDenied, stationsUpdatedAt, refreshStations, focus } = useData();
+  const { stations, places, partners, foodState, foodError, loadFood, location, locationDenied, stationsUpdatedAt, refreshStations, focus } = useData();
   const [tab, setTab] = useState<Tab>('bcycle');
   const [refreshing, setRefreshing] = useState(false);
   const origin = location ?? MADISON_CENTER;
@@ -94,7 +94,10 @@ export default function NearbyScreen() {
         {TABS.map((t) => (
           <Pressable
             key={t.id}
-            onPress={() => setTab(t.id)}
+            onPress={() => {
+              setTab(t.id);
+              if (t.id === 'food' || t.id === 'drink') loadFood();
+            }}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === t.id }}
             style={[styles.segmentItem, tab === t.id && styles.segmentActive]}>
@@ -113,7 +116,21 @@ export default function NearbyScreen() {
         keyExtractor={(r) => r.key}
         refreshControl={tab === 'bcycle' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
-        ListEmptyComponent={<Text style={styles.empty}>Nothing to show yet. Check your connection and pull to refresh.</Text>}
+        ListEmptyComponent={
+          (tab === 'food' || tab === 'drink') && foodState === 'loading' ? (
+            <View style={styles.emptyBox}>
+              <ActivityIndicator color={COLORS.brand} />
+              <Text style={styles.empty}>Loading restaurants and bars… this can take up to 30 seconds the first time.</Text>
+            </View>
+          ) : (tab === 'food' || tab === 'drink') && foodState === 'error' ? (
+            <Pressable style={styles.emptyBox} onPress={() => loadFood(true)}>
+              <Text style={styles.empty}>Couldn&apos;t load restaurants and bars. Tap to try again.</Text>
+              {foodError ? <Text style={styles.errorText}>{foodError}</Text> : null}
+            </Pressable>
+          ) : (
+            <Text style={styles.empty}>Nothing to show yet. Check your connection and pull to refresh.</Text>
+          )
+        }
         renderItem={({ item }) => (
           <Pressable onPress={() => open(item)} style={({ pressed }) => [styles.row, pressed && { backgroundColor: '#f3f4f6' }]}>
             <View style={{ flex: 1 }}>
@@ -156,5 +173,7 @@ const styles = StyleSheet.create({
   badgePartner: { backgroundColor: '#f59e0b' },
   distance: { fontSize: 13, color: COLORS.text, fontWeight: '500' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border, marginLeft: 16 },
-  empty: { textAlign: 'center', color: COLORS.muted, padding: 32 },
+  empty: { textAlign: 'center', color: COLORS.muted, padding: 16 },
+  emptyBox: { alignItems: 'center', padding: 24, gap: 8 },
+  errorText: { fontSize: 12, color: '#b91c1c', textAlign: 'center', paddingHorizontal: 16 },
 });
