@@ -657,7 +657,7 @@ const useStyles = makeStyles((c) => {
     layersChip: { backgroundColor: c.primary, borderColor: c.primary },
     chipText: { fontSize: 14, fontFamily: FONT.bold, color: c.text },
     weather: {
-      alignSelf: 'flex-start', marginLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
+      alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6,
       backgroundColor: c.overlay, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, ...shadow,
     },
     weatherText: { fontSize: 13, fontWeight: '600', color: c.text },
