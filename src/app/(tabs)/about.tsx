@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, T
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { HorizontalLogo } from '@/components/brand';
+import { TAGLINE } from '@/components/launch-screen';
 import { Onboarding } from '@/components/onboarding';
 import { useAuth } from '@/lib/auth';
 import { BRAND, COLORS, FONT } from '@/lib/config';
@@ -52,7 +53,7 @@ export default function AboutScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <HorizontalLogo height={46} />
-        <Text style={styles.heroTag}>The free local riding guide for Greater Madison</Text>
+        <Text style={styles.heroTag}>{TAGLINE}</Text>
       </View>
       <Text style={styles.p}>
         Bike paths, live BCycle e-bikes, bike shops, fix-it stations and parking for Madison and nearby

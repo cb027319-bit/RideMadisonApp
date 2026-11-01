@@ -10,8 +10,30 @@ import { BRAND, FONT } from '@/lib/config';
 const SPOKES =
   'M55 34 L63.5 34 M50 39 L50 47.5 M45 34 L36.5 34 M50 29 L50 20.5 M53.5 37.5 L59.5 43.5 M46.5 37.5 L40.5 43.5 M46.5 30.5 L40.5 24.5 M53.5 30.5 L59.5 24.5';
 
+/** Trademark symbol placed at the upper right of a logo. */
+function TM({ size, color }: { size: number; color: string }) {
+  return (
+    <Text
+      style={{ fontFamily: FONT.bold, fontSize: Math.max(7, size * 0.24), color, marginLeft: 1, alignSelf: 'flex-start' }}
+      accessibilityLabel="trademark">
+      ™
+    </Text>
+  );
+}
+
 /** The pin mark on its own (no background). `color` draws the wheel and pin. */
-export function LogoMark({ size = 40, color = BRAND.limestone, hub = true }: { size?: number; color?: string; hub?: boolean }) {
+export function LogoMark({ size = 40, color = BRAND.limestone, hub = true, tm = true }: {
+  size?: number; color?: string; hub?: boolean; tm?: boolean;
+}) {
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      <MarkSvg size={size} color={color} hub={hub} />
+      {tm && <TM size={size} color={color} />}
+    </View>
+  );
+}
+
+function MarkSvg({ size, color, hub }: { size: number; color: string; hub: boolean }) {
   // Mark spans x 28–72, y 12–66 in the master artwork.
   return (
     <Svg width={size * (44 / 54)} height={size} viewBox="28 12 44 54" accessibilityRole="image" accessibilityLabel="Ride Madison">
@@ -26,8 +48,19 @@ export function LogoMark({ size = 40, color = BRAND.limestone, hub = true }: { s
   );
 }
 
-/** The app icon: navy rounded square with the mark (and optional wordmark). */
-export function AppIcon({ size = 64, withText = false }: { size?: number; withText?: boolean }) {
+/** The app icon: navy rounded square with the mark, ™ at its upper right. */
+export function AppIcon({ size = 64, withText = false, tm = true, tmColor = BRAND.navy }: {
+  size?: number; withText?: boolean; tm?: boolean; tmColor?: string;
+}) {
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      <AppIconTile size={size} withText={withText} />
+      {tm && <TM size={size * 0.7} color={tmColor} />}
+    </View>
+  );
+}
+
+function AppIconTile({ size, withText }: { size: number; withText: boolean }) {
   return (
     <View style={{ width: size, height: size, borderRadius: size * 0.225, overflow: 'hidden', backgroundColor: BRAND.navy }}>
       <Svg width={size} height={size} viewBox="0 0 100 100">
@@ -46,12 +79,18 @@ export function AppIcon({ size = 64, withText = false }: { size?: number; withTe
   );
 }
 
-/** "RideMadison" wordmark: heavy Ride, light Madison. */
-export function Wordmark({ size = 28, color = BRAND.navy, style }: { size?: number; color?: string; style?: TextStyle }) {
+/** "RideMadison™" wordmark: heavy Ride, light Madison, trademark symbol. */
+export function Wordmark({ size = 28, color = BRAND.navy, style, tm = true }: {
+  size?: number; color?: string; style?: TextStyle; tm?: boolean;
+}) {
   return (
-    <Text style={[{ fontSize: size, color, letterSpacing: -size * 0.02, includeFontPadding: false }, style]} accessibilityRole="header">
+    <Text
+      style={[{ fontSize: size, color, letterSpacing: -size * 0.02, includeFontPadding: false }, style]}
+      accessibilityRole="header"
+      accessibilityLabel="Ride Madison">
       <Text style={{ fontFamily: FONT.black }}>Ride</Text>
       <Text style={{ fontFamily: FONT.light }}>Madison</Text>
+      {tm && <Text style={{ fontFamily: FONT.bold, fontSize: size * 0.42, letterSpacing: 0 }}>™</Text>}
     </Text>
   );
 }
@@ -61,7 +100,7 @@ export function HorizontalLogo({ height = 44, onLight = false }: { height?: numb
   const fg = onLight ? BRAND.navy : '#FFFFFF';
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: height * 0.28 }}>
-      <LogoMark size={height} color={onLight ? BRAND.navy : BRAND.limestone} />
+      <LogoMark size={height} color={onLight ? BRAND.navy : BRAND.limestone} tm={false} />
       <Wordmark size={height * 0.72} color={fg} />
     </View>
   );

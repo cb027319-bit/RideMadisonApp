@@ -8,9 +8,10 @@ import { useFonts } from 'expo-font';
 import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { AuthSheet } from '@/components/auth-sheet';
+import { LaunchScreen } from '@/components/launch-screen';
 import { AuthProvider } from '@/lib/auth';
 import { BRAND, COLORS } from '@/lib/config';
 import { DataProvider } from '@/lib/data';
@@ -35,6 +36,7 @@ export default function RootLayout() {
     RedHatDisplay_800ExtraBold, RedHatDisplay_900Black,
   });
   const ready = fontsLoaded || !!fontError;
+  const [showLaunch, setShowLaunch] = useState(true);
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
@@ -55,8 +57,9 @@ export default function RootLayout() {
                   />
                   <Stack.Screen name="tour" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
                 </Stack>
-                <AuthSheet />
-                <StatusBar style="dark" />
+                {!showLaunch && <AuthSheet />}
+                <StatusBar style={showLaunch ? 'light' : 'dark'} />
+                {showLaunch && <LaunchScreen onDone={() => setShowLaunch(false)} />}
               </TripProvider>
             </RouteProvider>
           </DataProvider>
