@@ -16,8 +16,9 @@ import { BRAND, COLORS, FONT, INITIAL_REGION, MADISON_CENTER } from '@/lib/confi
 import { useAuth } from '@/lib/auth';
 import { useData, type Selection } from '@/lib/data';
 import { pointInBBox, regionToBBox, type Region } from '@/lib/geo';
-import { PLACE_META } from '@/lib/labels';
-import { MAP_DATA_BUSY, MAP_DATA_ERROR } from '@/lib/osm';
+import { useT } from '@/lib/i18n';
+import { lineColor, PLACE_META } from '@/lib/labels';
+import { DARK_MAP_STYLE } from '@/lib/map-style';
 import type { Place, PlaceKind } from '@/lib/osm';
 import { cached } from '@/lib/cache';
 import { fetchParkTrails, parkBBoxOf, parkTrailStyle, type ParkTrail } from '@/lib/parks';
@@ -25,28 +26,29 @@ import { PARTNER_LAYER, partnersOnTrail, sponsorForTrail, trackPartner } from '@
 import { isEbikeRider, usePrefs } from '@/lib/prefs';
 import { useRoute } from '@/lib/route';
 import { closestPointOnTrail, nearestPath, paidSectionLines } from '@/lib/trails';
-import { describe, fetchWeather, type RideWeather } from '@/lib/weather';
+import { makeStyles, useTheme, type Palette } from '@/lib/theme';
+import { compassLabel, describe, fetchWeather, formatSunset, weatherKind, type RideWeather } from '@/lib/weather';
 
 type LayerId = 'trails' | 'lanes' | 'parks' | 'bcycle' | PlaceKind;
 
+/** Labels and hints are i18n keys, translated when the screen renders. */
 const LAYERS: LayerOption<LayerId>[] = [
-  { id: 'trails', label: 'Trails', color: COLORS.pathPaved, icon: 'trail-sign', group: 'map', hint: 'Car-free paths and unpaved trails' },
-  { id: 'lanes', label: 'Bike lanes', color: COLORS.lane, icon: 'remove', group: 'map', hint: 'Painted lanes on streets' },
-  { id: 'bcycle', label: 'BCycle', color: COLORS.bcycle, icon: 'bicycle', group: 'map', hint: 'Bike-share stations with live counts' },
-  { id: 'parks', label: 'State parks', color: COLORS.park, icon: 'leaf', group: 'map' },
-  { id: 'shop', label: 'Bike shops', color: COLORS.shop, icon: 'storefront', group: 'places' },
-  { id: 'repair', label: 'Fix-it stations', color: COLORS.repair, icon: 'construct', group: 'places', hint: 'Free pumps and tools' },
-  { id: 'water', label: 'Water', color: COLORS.water, icon: 'water', group: 'places', hint: 'Drinking fountains' },
-  { id: 'restroom', label: 'Restrooms', color: COLORS.restroom, icon: 'male-female', group: 'places' },
-  { id: 'playground', label: 'Playgrounds', color: COLORS.playground, icon: 'happy', group: 'places' },
-  { id: 'parking', label: 'Bike parking', color: COLORS.parking, icon: 'lock-closed', group: 'places' },
-  { id: 'food', label: 'Eat', color: COLORS.food, icon: 'restaurant', group: 'places', hint: 'Restaurants, cafés and ice cream' },
-  { id: 'drink', label: 'Drink', color: COLORS.drink, icon: 'beer', group: 'places', hint: 'Bars, pubs and breweries' },
+  { id: 'trails', label: 'map.layer.trails', color: COLORS.pathPaved, icon: 'trail-sign', group: 'map', hint: 'map.layer.trailsHint' },
+  { id: 'lanes', label: 'map.layer.lanes', color: COLORS.lane, icon: 'remove', group: 'map', hint: 'map.layer.lanesHint' },
+  { id: 'bcycle', label: 'BCycle', color: COLORS.bcycle, icon: 'bicycle', group: 'map', hint: 'map.layer.bcycleHint' },
+  { id: 'parks', label: 'map.layer.parks', color: COLORS.park, icon: 'leaf', group: 'map' },
+  { id: 'shop', label: 'map.place.shopPlural', color: COLORS.shop, icon: 'storefront', group: 'places' },
+  { id: 'repair', label: 'map.place.repairPlural', color: COLORS.repair, icon: 'construct', group: 'places', hint: 'map.layer.repairHint' },
+  { id: 'water', label: 'map.place.waterPlural', color: COLORS.water, icon: 'water', group: 'places', hint: 'map.layer.waterHint' },
+  { id: 'restroom', label: 'map.place.restroomPlural', color: COLORS.restroom, icon: 'male-female', group: 'places' },
+  { id: 'playground', label: 'map.place.playgroundPlural', color: COLORS.playground, icon: 'happy', group: 'places' },
+  { id: 'parking', label: 'map.place.parkingPlural', color: COLORS.parking, icon: 'lock-closed', group: 'places' },
+  { id: 'food', label: 'map.place.foodPlural', color: COLORS.food, icon: 'restaurant', group: 'places', hint: 'map.layer.foodHint' },
+  { id: 'drink', label: 'map.place.drinkPlural', color: COLORS.drink, icon: 'beer', group: 'places', hint: 'map.layer.drinkHint' },
 ];
 
 /** The few layers shown as chips on the map; the rest are in the Layers sheet. */
 const CHIP_IDS: LayerId[] = ['trails', 'lanes', 'bcycle', 'food'];
-const CHIPS = LAYERS.filter((l) => CHIP_IDS.includes(l.id));
 
 const DEFAULT_LAYERS: Record<LayerId, boolean> = {
   trails: true, lanes: true, parks: true, bcycle: true,
@@ -65,6 +67,9 @@ const MAX_DENSE_MARKERS = 250;
 const TAP_TOLERANCE_PT = 32;
 const HIGHLIGHT = '#facc15';
 
+/** BCycle pins: navy, lifted on the dark map so they don't disappear. */
+const stationColor = (c: Palette) => (c.dark ? '#3B5BA9' : COLORS.bcycle);
+
 export default function MapScreen() {
   const {
     paths, trailOfPath, trailById, pathById, places, partners, parks, stations, pathsState, placesState, stationsState,
@@ -81,6 +86,14 @@ export default function MapScreen() {
   const [layersOpen, setLayersOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
   const weather = useWeather(location);
+  const { c } = useTheme();
+  const { t } = useT();
+  const styles = useStyles();
+  const layerOptions = useMemo(
+    () => LAYERS.map((l) => ({ ...l, label: t(l.label), hint: l.hint ? t(l.hint) : undefined })),
+    [t],
+  );
+  const chips = layerOptions.filter((l) => CHIP_IDS.includes(l.id));
 
   const fitBBox = (b: { minLat: number; minLon: number; maxLat: number; maxLon: number }) => {
     mapRef.current?.fitToCoordinates(
@@ -267,11 +280,11 @@ export default function MapScreen() {
     return selectionCenter(s);
   };
 
-  const status = statusMessage({ pathsState, placesState, stationsState, offlineCopy });
+  const status = statusMessage({ pathsState, placesState, stationsState, offlineCopy }, t);
   const zoomHint = !status && layers.bcycle && !showStations
-    ? 'Zoom in to see BCycle stations'
+    ? t('map.zoomBcycle')
     : !status && !showDense && [...DENSE_KINDS].some((k) => layers[k])
-      ? 'Zoom in to see these places'
+      ? t('map.zoomPlaces')
       : null;
 
   return (
@@ -285,7 +298,9 @@ export default function MapScreen() {
         showsUserLocation={locationStatus === 'granted'}
         showsMyLocationButton={false}
         showsPointsOfInterests={false}
-        toolbarEnabled={false}>
+        toolbarEnabled={false}
+        userInterfaceStyle={c.dark ? 'dark' : 'light'}
+        customMapStyle={c.dark ? DARK_MAP_STYLE : []}>
         <PathLines paths={paths} region={region} showTrails={layers.trails} showLanes={layers.lanes} />
 
         {selectedTrailPaths.map((p) => (
@@ -302,7 +317,7 @@ export default function MapScreen() {
           <Polyline
             key={`paid:${i}`}
             coordinates={line.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))}
-            strokeColor={BRAND.red}
+            strokeColor={c.accent}
             strokeWidth={3}
             lineDashPattern={[8, 6]}
             zIndex={4}
@@ -316,7 +331,7 @@ export default function MapScreen() {
               <Polyline
                 key={`pt:${t.name}:${i}`}
                 coordinates={line.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))}
-                strokeColor={st.color}
+                strokeColor={lineColor(st.color, c.dark)}
                 strokeWidth={st.width}
                 lineDashPattern={st.dash}
                 zIndex={3}
@@ -362,11 +377,11 @@ export default function MapScreen() {
             tracksViewChanges={trackPins}
             anchor={{ x: 0.5, y: 0.5 }}
             zIndex={20}
-            accessibilityLabel={`Sponsored: ${p.name}`}>
+            accessibilityLabel={t('map.sponsoredName', { name: p.name })}>
             <View style={styles.partnerPin}>
               <PartnerMark partner={p} size={30} />
               <View style={styles.partnerStar}>
-                <Ionicons name="star" size={9} color={BRAND.navy} />
+                <Ionicons name="star" size={9} color={c.onGold} />
               </View>
             </View>
           </Marker>
@@ -381,7 +396,11 @@ export default function MapScreen() {
               onPress={() => select({ type: 'station', item: s })}
               tracksViewChanges={trackPins}
               anchor={{ x: 0.5, y: 0.5 }}
-              accessibilityLabel={`BCycle ${s.name}: ${s.bikes} ${s.bikes === 1 ? 'bike' : 'bikes'}, ${s.docks} open spots to return`}>
+              accessibilityLabel={t('map.stationA11y', {
+                name: s.name,
+                bikes: t('map.bikes.bikes', { count: s.bikes }),
+                docks: t('map.openSpots', { count: s.docks }),
+              })}>
               <View style={styles.stationHit}>
                 <View style={[styles.station, empty && styles.stationEmpty]}>
                   {showCounts ? (
@@ -405,29 +424,30 @@ export default function MapScreen() {
             router.navigate('/route');
           }}
           accessibilityRole="search"
-          accessibilityLabel="Where to? Plan a bike route">
+          accessibilityLabel={t('map.whereToA11y')}>
           <View style={styles.whereToLogo}>
             <LogoMark size={26} color={BRAND.limestone} />
           </View>
-          <Text style={styles.whereToText}>Where to?</Text>
+          <Text style={styles.whereToText}>{t('map.whereTo')}</Text>
           <View style={styles.whereToBadge}>
-            <Ionicons name="navigate" size={14} color="#fff" />
-            <Text style={styles.whereToBadgeText}>Route</Text>
+            <Ionicons name="navigate" size={14} color={c.onAccent} />
+            <Text style={styles.whereToBadgeText}>{t('map.tab.route')}</Text>
           </View>
         </Pressable>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {CHIPS.map((l) => {
+          {chips.map((l) => {
             const on = layers[l.id];
+            const offColor = l.id === 'bcycle' && c.dark ? c.primary : lineColor(l.color, c.dark);
             return (
               <Pressable
                 key={l.id}
                 onPress={() => toggle(l.id)}
                 accessibilityRole="switch"
                 accessibilityState={{ checked: on }}
-                accessibilityLabel={`${l.label} layer`}
+                accessibilityLabel={t('map.layer.a11y', { label: l.label })}
                 style={[styles.chip, on && { backgroundColor: l.color, borderColor: l.color }]}>
-                <Ionicons name={l.icon} size={15} color={on ? '#fff' : l.color} />
+                <Ionicons name={l.icon} size={15} color={on ? '#fff' : offColor} />
                 <Text style={[styles.chipText, on && { color: '#fff' }]}>{l.label}</Text>
               </Pressable>
             );
@@ -435,20 +455,27 @@ export default function MapScreen() {
           <Pressable
             onPress={() => setLayersOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel={extraOn ? `Layers, ${extraOn} more on` : 'Layers'}
-            accessibilityHint="Shows all map layers: shops, fix-it, water, restrooms, playgrounds and more"
+            accessibilityLabel={extraOn ? t('map.layersMoreOn', { count: extraOn }) : t('map.layers')}
+            accessibilityHint={t('map.layersHint')}
             style={[styles.chip, styles.layersChip]}>
-            <Ionicons name="layers" size={15} color="#fff" />
-            <Text style={[styles.chipText, { color: '#fff' }]}>Layers{extraOn ? ` · ${extraOn}` : ''}</Text>
+            <Ionicons name="layers" size={15} color={c.onPrimary} />
+            <Text style={[styles.chipText, { color: c.onPrimary }]}>{t('map.layers')}{extraOn ? ` · ${extraOn}` : ''}</Text>
           </Pressable>
         </ScrollView>
 
         {weather && (
-          <View style={styles.weather} accessible accessibilityLabel={`Ride weather: ${weather.tempF} degrees, ${describe(weather.code)}, wind ${weather.windMph} miles per hour from the ${weather.windFrom}`}>
-            <Ionicons name={weatherIcon(weather.code)} size={14} color={COLORS.text} />
+          <View
+            style={styles.weather}
+            accessible
+            accessibilityLabel={t('map.weather.a11y', {
+              temp: weather.tempF, desc: describe(weather.code), wind: weather.windMph, dir: compassLabel(weather.windFrom),
+            })}>
+            <Ionicons name={weatherIcon(weather.code)} size={14} color={c.text} />
             <Text style={styles.weatherText}>
-              {weather.tempF}° {describe(weather.code)}  ·  Wind {weather.windMph} mph {weather.windFrom}
-              {weather.sunset ? `  ·  Sunset ${weather.sunset}` : ''}
+              {t('map.weather.line', {
+                temp: weather.tempF, desc: describe(weather.code), wind: weather.windMph, dir: compassLabel(weather.windFrom),
+              })}
+              {weather.sunsetMin != null ? `  ·  ${t('map.weather.sunset', { time: formatSunset(weather.sunsetMin) })}` : ''}
             </Text>
           </View>
         )}
@@ -458,7 +485,7 @@ export default function MapScreen() {
             style={styles.banner}
             onPress={status.retry ? () => void refreshAll() : undefined}
             accessibilityRole={status.retry ? 'button' : 'text'}>
-            {status.loading && <ActivityIndicator size="small" color={COLORS.brand} />}
+            {status.loading && <ActivityIndicator size="small" color={c.primary} />}
             <View style={{ flexShrink: 1 }}>
               <Text style={styles.bannerText}>{status.text}</Text>
               {__DEV__ && status.retry && lastError ? <Text style={styles.errorText}>{lastError}</Text> : null}
@@ -479,7 +506,7 @@ export default function MapScreen() {
             pointerEvents="none"
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants">
-            <Text style={styles.tipText}>Tap a trail on the map, or find it under Nearby &gt; Trails</Text>
+            <Text style={styles.tipText}>{t('map.tapTrailTip')}</Text>
           </View>
         )}
         <View style={styles.bottomRow} pointerEvents="box-none">
@@ -487,13 +514,13 @@ export default function MapScreen() {
             style={styles.keyButton}
             onPress={() => setKeyOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel="Map key"
-            accessibilityHint="Explains the map's lines and pins">
-            <Ionicons name="information-circle-outline" size={18} color={COLORS.brand} />
-            <Text style={styles.keyText}>Key</Text>
+            accessibilityLabel={t('map.mapKey')}
+            accessibilityHint={t('map.mapKeyHint')}>
+            <Ionicons name="information-circle-outline" size={18} color={c.primary} />
+            <Text style={styles.keyText}>{t('map.keyShort')}</Text>
           </Pressable>
-          <Pressable style={styles.locate} onPress={() => void recenter()} accessibilityRole="button" accessibilityLabel="Center on my location">
-            <Ionicons name="locate" size={22} color={COLORS.brand} />
+          <Pressable style={styles.locate} onPress={() => void recenter()} accessibilityRole="button" accessibilityLabel={t('map.centerOnMe')}>
+            <Ionicons name="locate" size={22} color={c.primary} />
           </Pressable>
         </View>
         {selection && (
@@ -520,7 +547,7 @@ export default function MapScreen() {
 
       <LayersSheet
         visible={layersOpen}
-        layers={LAYERS}
+        layers={layerOptions}
         on={layers}
         onToggle={toggle}
         onClose={() => setLayersOpen(false)}
@@ -565,106 +592,109 @@ function useWeather(location: { latitude: number; longitude: number } | null): R
 }
 
 function weatherIcon(code: number): keyof typeof Ionicons.glyphMap {
-  const d = describe(code);
-  if (d === 'Clear') return 'sunny-outline';
-  if (d === 'Partly cloudy') return 'partly-sunny-outline';
-  if (d === 'Rain' || d === 'Drizzle') return 'rainy-outline';
-  if (d === 'Snow') return 'snow-outline';
-  if (d === 'Storms') return 'thunderstorm-outline';
+  const k = weatherKind(code);
+  if (k === 'clear') return 'sunny-outline';
+  if (k === 'partlyCloudy') return 'partly-sunny-outline';
+  if (k === 'rain' || k === 'drizzle') return 'rainy-outline';
+  if (k === 'snow') return 'snow-outline';
+  if (k === 'storms') return 'thunderstorm-outline';
   return 'cloud-outline';
 }
 
-function statusMessage(s: {
-  pathsState: string; placesState: string; stationsState: string; offlineCopy: boolean;
-}): { text: string; loading?: boolean; retry?: boolean } | null {
+function statusMessage(
+  s: { pathsState: string; placesState: string; stationsState: string; offlineCopy: boolean },
+  t: (key: string) => string,
+): { text: string; loading?: boolean; retry?: boolean } | null {
   if (s.pathsState === 'error' || s.placesState === 'error') {
-    return { text: `${MAP_DATA_ERROR} Tap to retry.`, retry: true };
+    return { text: `${t('map.dataError')} ${t('map.tapRetry')}`, retry: true };
   }
   if (s.pathsState === 'loading' || s.placesState === 'loading') {
-    return { text: 'Loading trails and places…', loading: true };
+    return { text: t('map.loadingTrails'), loading: true };
   }
-  if (s.stationsState === 'error') return { text: "BCycle counts aren't available right now. Tap to retry.", retry: true };
-  if (s.offlineCopy) return { text: `${MAP_DATA_BUSY} Tap to try again.`, retry: true };
+  if (s.stationsState === 'error') return { text: t('map.bcycleUnavailable'), retry: true };
+  if (s.offlineCopy) return { text: `${t('map.dataBusy')} ${t('map.tapTryAgain')}`, retry: true };
   return null;
 }
 
-const shadow = {
-  shadowColor: '#000',
-  shadowOpacity: 0.12,
-  shadowRadius: 6,
-  shadowOffset: { width: 0, height: 2 },
-  elevation: 3,
-};
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  top: { position: 'absolute', top: 0, left: 0, right: 0 },
-  whereTo: {
-    marginHorizontal: 12, marginTop: 8, minHeight: 50, borderRadius: 25, backgroundColor: COLORS.bg,
-    flexDirection: 'row', alignItems: 'center', paddingLeft: 5, paddingRight: 6, gap: 10, ...shadow,
-  },
-  whereToLogo: { width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
-  whereToText: { flex: 1, fontSize: 18, fontFamily: FONT.bold, color: COLORS.text },
-  whereToBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BRAND.red,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-  },
-  whereToBadgeText: { color: '#fff', fontFamily: FONT.black, fontSize: 16 }, // 16pt bold: white on red needs large text
-  chips: { paddingHorizontal: 12, paddingVertical: 8, gap: 6 },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, minHeight: 44,
-    borderRadius: 999, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, ...shadow,
-  },
-  layersChip: { backgroundColor: BRAND.navy, borderColor: BRAND.navy },
-  chipText: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.text },
-  weather: {
-    alignSelf: 'flex-start', marginLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, ...shadow,
-  },
-  weatherText: { fontSize: 13, fontWeight: '600', color: COLORS.text },
-  banner: {
-    alignSelf: 'center', maxWidth: '92%', marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, ...shadow,
-  },
-  bannerText: { fontSize: 14, fontWeight: '600', color: COLORS.text },
-  errorText: { fontSize: 13, color: '#b91c1c', marginTop: 2 },
-  bottom: { position: 'absolute', left: 12, right: 12, bottom: 16, gap: 10 },
-  tip: {
-    alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.8)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-  },
-  tipText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  keyButton: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 14, borderRadius: 22,
-    backgroundColor: COLORS.bg, ...shadow,
-  },
-  keyText: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.brand },
-  locate: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.bg,
-    alignItems: 'center', justifyContent: 'center', ...shadow,
-  },
-  pin: {
-    width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#fff',
-  },
-  parkPin: {
-    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.park, borderWidth: 2, borderColor: '#fff',
-  },
-  partnerPin: {
-    padding: 3, borderRadius: 20, backgroundColor: COLORS.partner,
-    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
-  },
-  partnerStar: {
-    position: 'absolute', right: -2, top: -2, width: 15, height: 15, borderRadius: 8, backgroundColor: COLORS.partner,
-    borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center',
-  },
-  stationHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  station: {
-    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.bcycle, borderWidth: 2, borderColor: '#fff',
-    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2,
-  },
-  stationEmpty: { backgroundColor: COLORS.bcycleEmpty },
-  stationCount: { color: '#fff', fontSize: 13, fontFamily: FONT.black },
+const useStyles = makeStyles((c) => {
+  const shadow = {
+    shadowColor: c.shadow,
+    shadowOpacity: c.dark ? 0.4 : 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  };
+  return {
+    container: { flex: 1, backgroundColor: c.bg },
+    top: { position: 'absolute', top: 0, left: 0, right: 0 },
+    whereTo: {
+      marginHorizontal: 12, marginTop: 8, minHeight: 50, borderRadius: 25, backgroundColor: c.overlay,
+      flexDirection: 'row', alignItems: 'center', paddingLeft: 5, paddingRight: 6, gap: 10, ...shadow,
+    },
+    whereToLogo: { width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
+    whereToText: { flex: 1, fontSize: 18, fontFamily: FONT.bold, color: c.text },
+    whereToBadge: {
+      flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent,
+      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    },
+    whereToBadgeText: { color: c.onAccent, fontFamily: FONT.black, fontSize: 16 }, // 16pt bold: white on red needs large text
+    chips: { paddingHorizontal: 12, paddingVertical: 8, gap: 6 },
+    chip: {
+      flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, minHeight: 44,
+      borderRadius: 999, backgroundColor: c.overlay, borderWidth: 1, borderColor: c.border, ...shadow,
+    },
+    layersChip: { backgroundColor: c.primary, borderColor: c.primary },
+    chipText: { fontSize: 14, fontFamily: FONT.bold, color: c.text },
+    weather: {
+      alignSelf: 'flex-start', marginLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: c.overlay, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, ...shadow,
+    },
+    weatherText: { fontSize: 13, fontWeight: '600', color: c.text },
+    banner: {
+      alignSelf: 'center', maxWidth: '92%', marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.overlay, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, ...shadow,
+    },
+    bannerText: { fontSize: 14, fontWeight: '600', color: c.text },
+    errorText: { fontSize: 13, color: c.danger, marginTop: 2 },
+    bottom: { position: 'absolute', left: 12, right: 12, bottom: 16, gap: 10 },
+    tip: {
+      alignSelf: 'center', backgroundColor: c.dark ? 'rgba(244,241,234,0.92)' : 'rgba(17,24,39,0.8)',
+      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+    },
+    tipText: { color: c.dark ? BRAND.navy : '#fff', fontSize: 13, fontWeight: '600' },
+    bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    keyButton: {
+      flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 14, borderRadius: 22,
+      backgroundColor: c.overlay, ...shadow,
+    },
+    keyText: { fontSize: 15, fontFamily: FONT.bold, color: c.primary },
+    locate: {
+      width: 48, height: 48, borderRadius: 24, backgroundColor: c.overlay,
+      alignItems: 'center', justifyContent: 'center', ...shadow,
+    },
+    pin: {
+      width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 2, borderColor: '#fff',
+    },
+    parkPin: {
+      width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: c.dark ? '#22803f' : COLORS.park, borderWidth: 2, borderColor: '#fff',
+    },
+    partnerPin: {
+      padding: 3, borderRadius: 20, backgroundColor: COLORS.partner,
+      shadowColor: c.shadow, shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    },
+    partnerStar: {
+      position: 'absolute', right: -2, top: -2, width: 15, height: 15, borderRadius: 8, backgroundColor: COLORS.partner,
+      borderWidth: 1.5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    },
+    stationHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    station: {
+      width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: stationColor(c), borderWidth: 2, borderColor: '#fff',
+      shadowColor: c.shadow, shadowOpacity: 0.25, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2,
+    },
+    stationEmpty: { backgroundColor: COLORS.bcycleEmpty },
+    stationCount: { color: '#fff', fontSize: 13, fontFamily: FONT.black },
+  };
 });

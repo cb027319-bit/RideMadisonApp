@@ -8,15 +8,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LogoMark, Wordmark } from '@/components/brand';
 import { BRAND, FONT } from '@/lib/config';
+import { t as translate, useT } from '@/lib/i18n';
+import { makeStyles } from '@/lib/theme';
 
 /** True once the opening screen has finished, so other overlays wait for it. */
 export const LaunchDoneContext = createContext(false);
 export const useLaunchDone = () => useContext(LaunchDoneContext);
 
+/** The tagline in the rider's language. */
+export const tagline = () => translate('map.tagline');
+/** English tagline, kept for screens not yet converted; prefer tagline(). */
 export const TAGLINE = 'The free local riding guide for Greater Madison';
 const HOLD_MS = 1400;
 
 export function LaunchScreen({ onDone }: { onDone: () => void }) {
+  const { t } = useT();
+  const styles = useStyles();
   const [mark] = useState(() => new Animated.Value(0));
   const [text] = useState(() => new Animated.Value(0));
   const [out] = useState(() => new Animated.Value(1));
@@ -43,7 +50,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, styles.root, { opacity: out }]}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => finishRef.current()} accessibilityLabel="Ride Madison. Tap to continue.">
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => finishRef.current()} accessibilityLabel={t('map.launch.a11y')}>
         <SafeAreaView style={styles.center} edges={['top', 'bottom']}>
           <View style={styles.middle}>
             <Animated.View
@@ -66,21 +73,22 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
                 <Wordmark size={44} color="#FFFFFF" />
               </View>
               <View style={styles.rule} />
-              <Text style={styles.tagline}>{TAGLINE}</Text>
+              <Text style={styles.tagline}>{t('map.tagline')}</Text>
             </Animated.View>
           </View>
-          <Animated.Text style={[styles.footer, { opacity: text }]}>Made in Madison, Wisconsin</Animated.Text>
+          <Animated.Text style={[styles.footer, { opacity: text }]}>{t('map.launch.footer')}</Animated.Text>
         </SafeAreaView>
       </Pressable>
     </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
+// Stays navy in both modes (matches the native splash), so no palette tokens here.
+const useStyles = makeStyles(() => ({
   root: { backgroundColor: BRAND.navy, zIndex: 1000, elevation: 1000 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'space-between' },
   middle: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   rule: { width: 44, height: 3, borderRadius: 2, backgroundColor: BRAND.red, marginTop: 18, marginBottom: 16 },
   tagline: { color: BRAND.limestone, fontSize: 17, fontFamily: FONT.medium, textAlign: 'center', lineHeight: 24 },
   footer: { color: BRAND.gold, fontSize: 12, fontFamily: FONT.bold, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 18 },
-});
+}));

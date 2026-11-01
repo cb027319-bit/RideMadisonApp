@@ -2,10 +2,17 @@
 // otherwise the Capitol (so a visitor still at home sees sensible numbers).
 
 import { COVERAGE_BBOX, MADISON_CENTER } from './config';
+import { t } from './i18n';
 
 export type LatLng = { latitude: number; longitude: number };
 
+/** English copy of the note (kept for tests); screens call outsideNote(). */
 export const OUTSIDE_NOTE = "You're outside Madison: distances from the Capitol";
+
+/** "You're outside Madison: distances from the Capitol", in the rider's language. */
+export function outsideNote(): string {
+  return t('map.outsideNote');
+}
 
 export function insideCoverage(p: LatLng): boolean {
   const [minLon, minLat, maxLon, maxLat] = COVERAGE_BBOX;

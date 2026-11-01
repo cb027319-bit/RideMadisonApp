@@ -5,8 +5,9 @@ import { memo, useMemo } from 'react';
 import { Polyline } from 'react-native-maps';
 
 import { bboxIntersects, regionToBBox, type Region } from '@/lib/geo';
-import { PATH_META } from '@/lib/labels';
+import { lineColor, PATH_META } from '@/lib/labels';
 import type { BikePath } from '@/lib/osm';
+import { useTheme } from '@/lib/theme';
 
 interface Props {
   paths: BikePath[];
@@ -21,6 +22,7 @@ interface Props {
 const LANES_MAX_LAT_DELTA = 0.2;
 
 function PathLinesInner({ paths, region, faded, showTrails = true, showLanes = true, max = 1500 }: Props) {
+  const { c } = useTheme();
   const lines = useMemo(
     () => paths.map((p) => ({ path: p, coords: p.coords.map(([lon, lat]) => ({ latitude: lat, longitude: lon })) })),
     [paths],
@@ -48,7 +50,7 @@ function PathLinesInner({ paths, region, faded, showTrails = true, showLanes = t
     <>
       {visible.map(({ path, coords }) => {
         const lane = path.kind === 'lane';
-        const color = PATH_META[path.kind].color;
+        const color = lineColor(PATH_META[path.kind].color, c.dark);
         return (
           <Polyline
             key={path.id}

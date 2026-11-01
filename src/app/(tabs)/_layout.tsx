@@ -1,53 +1,58 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 
-import { BRAND, COLORS, FONT } from '@/lib/config';
+import { FONT } from '@/lib/config';
+import { useT } from '@/lib/i18n';
+import { useTheme } from '@/lib/theme';
 
 export default function TabLayout() {
+  const { c } = useTheme();
+  const { t } = useT();
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: COLORS.brand,
-        tabBarInactiveTintColor: COLORS.inactive,
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.textFaint,
         tabBarActiveBackgroundColor: 'transparent',
-        tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: COLORS.border },
-        headerStyle: { backgroundColor: '#FFFFFF' },
-        headerTintColor: BRAND.navy,
+        tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border },
+        headerStyle: { backgroundColor: c.surface },
+        headerTintColor: c.text,
         headerShadowVisible: false,
         headerTitleStyle: { fontFamily: FONT.black, fontSize: 20 },
         tabBarLabelStyle: { fontSize: 12, fontFamily: FONT.bold },
+        sceneStyle: { backgroundColor: c.bg },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Map',
+          title: t('map.tab.map'),
           headerShown: false,
-          tabBarAccessibilityLabel: 'Map: bike paths, BCycle and shops',
+          tabBarAccessibilityLabel: t('map.tab.mapA11y'),
           tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="route"
         options={{
-          title: 'Route',
+          title: t('map.tab.route'),
           headerShown: false,
-          tabBarAccessibilityLabel: 'Route: plan a bike ride',
+          tabBarAccessibilityLabel: t('map.tab.routeA11y'),
           tabBarIcon: ({ color, size }) => <Ionicons name="navigate" size={size} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="nearby"
         options={{
-          title: 'Nearby',
-          headerTitle: 'Nearby',
+          title: t('map.tab.nearby'),
+          headerTitle: t('map.tab.nearby'),
           tabBarIcon: ({ color, size }) => <Ionicons name="location" size={size} color={color as string} />,
         }}
       />
       <Tabs.Screen
         name="about"
         options={{
-          title: 'More',
-          headerTitle: 'More',
+          title: t('map.tab.more'),
+          headerTitle: t('map.tab.more'),
           tabBarIcon: ({ color, size }) => <Ionicons name="ellipsis-horizontal-circle" size={size} color={color as string} />,
         }}
       />

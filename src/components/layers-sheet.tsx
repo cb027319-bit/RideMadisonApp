@@ -1,9 +1,11 @@
 // All map layers as named switches (the map itself shows only a few chips).
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
-import { COLORS, FONT } from '@/lib/config';
+import { FONT } from '@/lib/config';
+import { useT } from '@/lib/i18n';
+import { makeStyles, useTheme } from '@/lib/theme';
 
 export interface LayerOption<Id extends string> {
   id: Id;
@@ -23,19 +25,23 @@ interface Props<Id extends string> {
   onShowKey: () => void;
 }
 
+/** `label` and `hint` are shown as given (pass them already translated). */
 export function LayersSheet<Id extends string>({ visible, layers, on, onToggle, onClose, onShowKey }: Props<Id>) {
+  const { t } = useT();
+  const { c } = useTheme();
+  const styles = useStyles();
   const groups: { title: string; items: LayerOption<Id>[] }[] = [
-    { title: 'Map', items: layers.filter((l) => l.group === 'map') },
-    { title: 'Places', items: layers.filter((l) => l.group === 'places') },
+    { title: t('map.tab.map'), items: layers.filter((l) => l.group === 'map') },
+    { title: t('map.layersPlaces'), items: layers.filter((l) => l.group === 'places') },
   ];
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close layers" accessibilityRole="button" />
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t('map.closeLayers')} accessibilityRole="button" />
       <View style={styles.sheet}>
         <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">Layers</Text>
-          <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close layers" style={styles.close}>
-            <Ionicons name="close" size={24} color={COLORS.text} />
+          <Text style={styles.title} accessibilityRole="header">{t('map.layers')}</Text>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('map.closeLayers')} style={styles.close}>
+            <Ionicons name="close" size={24} color={c.text} />
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
@@ -61,7 +67,7 @@ export function LayersSheet<Id extends string>({ visible, layers, on, onToggle, 
                   <Switch
                     value={on[l.id]}
                     onValueChange={() => onToggle(l.id)}
-                    trackColor={{ true: COLORS.brand, false: '#D1D5DB' }}
+                    trackColor={{ true: c.dark ? '#5B7BC9' : c.primary, false: c.dark ? '#3A4560' : '#D1D5DB' }}
                     accessibilityLabel={l.label}
                     importantForAccessibility="no"
                     accessibilityElementsHidden
@@ -71,8 +77,8 @@ export function LayersSheet<Id extends string>({ visible, layers, on, onToggle, 
             </View>
           ))}
           <Pressable style={styles.keyRow} onPress={onShowKey} accessibilityRole="button">
-            <Ionicons name="information-circle-outline" size={20} color={COLORS.brand} />
-            <Text style={styles.keyText}>What do the lines and pins mean?</Text>
+            <Ionicons name="information-circle-outline" size={20} color={c.primary} />
+            <Text style={styles.keyText}>{t('map.layersKeyLink')}</Text>
           </Pressable>
         </ScrollView>
       </View>
@@ -80,20 +86,20 @@ export function LayersSheet<Id extends string>({ visible, layers, on, onToggle, 
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, backgroundColor: c.scrim },
   sheet: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '85%', backgroundColor: COLORS.bg,
+    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '85%', backgroundColor: c.surface,
     borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 12,
   },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
-  title: { fontSize: 22, fontFamily: FONT.black, color: COLORS.text },
+  title: { fontSize: 22, fontFamily: FONT.black, color: c.text },
   close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  section: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.muted, marginTop: 12, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  section: { fontSize: 14, fontFamily: FONT.bold, color: c.textMuted, marginTop: 12, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 6 },
   icon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 16, fontFamily: FONT.bold, color: COLORS.text },
-  hint: { fontSize: 13, color: COLORS.muted, marginTop: 1 },
+  label: { fontSize: 16, fontFamily: FONT.bold, color: c.text },
+  hint: { fontSize: 13, color: c.textMuted, marginTop: 1 },
   keyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, marginTop: 12 },
-  keyText: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.brand, textDecorationLine: 'underline' },
-});
+  keyText: { fontSize: 15, fontFamily: FONT.bold, color: c.primary, textDecorationLine: 'underline' },
+}));

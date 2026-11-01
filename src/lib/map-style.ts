@@ -1,5 +1,5 @@
-// Google Maps dark style (Android). iOS Apple Maps uses userInterfaceStyle instead.
-// Pass as customMapStyle={c.dark ? DARK_MAP_STYLE : []}.
+// Dark Google Maps style for Android (react-native-maps customMapStyle).
+// iOS Apple Maps follows userInterfaceStyle instead. Standard Google "night" style.
 
 import type { MapStyleElement } from 'react-native-maps';
 

@@ -3,6 +3,7 @@
 // them, attach local rules, and find which trail a map tap was aimed at.
 
 import { distanceMeters, type BBox, type LonLat } from './geo';
+import { t } from './i18n';
 import type { BikePath, PathKind } from './osm';
 
 export interface Trail {
@@ -40,27 +41,32 @@ export interface TrailRules {
 
 // ---------- local rules (verified Oct 2026 against dnr.wisconsin.gov) ----------
 
-const DNR_PASS = 'A state trail pass is needed to bike here, age 16+ ($5/day or $25/year).';
-const DNR_EBIKES = 'Class 1 and Class 3 e-bikes are allowed up to 15 mph. Class 2 (throttle) e-bikes: pedal only, motor off.';
+// Rule text is read through getters so it follows the rider's language (map.rules.*).
+
 const DNR_EBIKE_BY_CLASS: Record<EbikeClass, string> = {
-  '1': 'Class 1 e-bikes are allowed on state trails, up to 15 mph.',
-  '2': "Class 2 e-bikes can't use the motor on state trails; pedal only.",
-  '3': 'Class 3 e-bikes are allowed on state trails, up to 15 mph.',
+  get '1'() { return t('map.rules.ebike1'); },
+  get '2'() { return t('map.rules.ebike2'); },
+  get '3'() { return t('map.rules.ebike3'); },
 };
-const LOCAL_EBIKES = 'E-bikes: follow posted signs. Some county and city paths limit e-bike classes or speed.';
 
 const dnr = (url: string): TrailRules => ({
-  badge: 'State trail pass', verdict: 'pass', pass: DNR_PASS, ebikes: DNR_EBIKES, ebikeByClass: DNR_EBIKE_BY_CLASS, manager: 'WI DNR', url,
+  get badge() { return t('map.rules.badgeState'); },
+  verdict: 'pass',
+  get pass() { return t('map.rules.dnrPass'); },
+  get ebikes() { return t('map.rules.dnrEbikes'); },
+  ebikeByClass: DNR_EBIKE_BY_CLASS,
+  manager: 'WI DNR',
+  url,
 });
 
 const RULES: { match: RegExp; rules: TrailRules }[] = [
   {
     match: /capital city/i,
     rules: {
-      badge: 'Pass on part',
+      get badge() { return t('map.rules.badgePart'); },
       verdict: 'part',
-      pass: 'Free in Madison and around Lake Monona. A state trail pass ($5/day or $25/year, age 16+) is needed only on the section southwest of Fitchburg, outside the city.',
-      ebikes: DNR_EBIKES,
+      get pass() { return t('map.rules.ccPass'); },
+      get ebikes() { return t('map.rules.dnrEbikes'); },
       ebikeByClass: DNR_EBIKE_BY_CLASS,
       manager: 'Dane County Parks / WI DNR',
       url: 'https://dnr.wisconsin.gov/topic/parks/capcity/recreation',
@@ -76,9 +82,9 @@ const RULES: { match: RegExp; rules: TrailRules }[] = [
 export const TRAIL_PASS_URL = 'https://dnr.wisconsin.gov/topic/parks/trailpass';
 
 export const VERDICT_LABEL: Record<PassVerdict, string> = {
-  free: 'Free',
-  part: 'Pass needed on part',
-  pass: 'Pass needed',
+  get free() { return t('map.verdict.free'); },
+  get part() { return t('map.verdict.part'); },
+  get pass() { return t('map.verdict.pass'); },
 };
 
 export function rulesFor(name?: string): TrailRules | undefined {
@@ -92,7 +98,7 @@ export function verdictFor(rules?: TrailRules): PassVerdict {
 
 /** The e-bike rule to show: class-specific when the rider told us their class. */
 export function ebikeRule(rules: TrailRules | undefined, ebikeClass?: string | null): string {
-  if (!rules) return LOCAL_EBIKES;
+  if (!rules) return t('map.rules.localEbikes');
   if (ebikeClass === '1' || ebikeClass === '2' || ebikeClass === '3') return rules.ebikeByClass[ebikeClass];
   return rules.ebikes;
 }

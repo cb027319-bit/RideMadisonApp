@@ -3,6 +3,7 @@
 // in development builds when no real partners are live yet.
 
 import { cached } from './cache';
+import { t } from './i18n';
 import { ImpressionDedupe, newSessionKey, type PartnerEvent, type PartnerPlacement } from './partner-events';
 import { supabase } from './supabase';
 
@@ -41,12 +42,12 @@ const BASE_COLUMNS =
 const COLUMNS = `${BASE_COLUMNS},hours,trail_name,offer_code`;
 
 export const CATEGORY_LABEL: Record<string, string> = {
-  shop: 'Bike shop',
-  food: 'Eat',
-  drink: 'Drink',
-  lodging: 'Lodging',
-  service: 'Service',
-  other: 'Local business',
+  get shop() { return t('map.place.shop'); },
+  get food() { return t('map.place.food'); },
+  get drink() { return t('map.place.drink'); },
+  get lodging() { return t('map.category.lodging'); },
+  get service() { return t('map.category.service'); },
+  get other() { return t('map.category.other'); },
 };
 
 /** Fictional businesses for showing shop owners what a placement looks like. */
