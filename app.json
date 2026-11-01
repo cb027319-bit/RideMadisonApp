@@ -38,7 +38,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Ride Madison uses your location to show nearby bike paths, BCycle stations and shops."
+          "locationWhenInUsePermission": "Ride Madison uses your location to show nearby paths, BCycle and shops, plan routes from where you are, and give turn-by-turn directions."
         }
       ],
       "expo-sharing",

@@ -1,52 +1,42 @@
-// Rider preferences from the two-question onboarding ("What do you ride?" and
+// Rider preferences from the short onboarding ("What do you ride?" and
 // "How comfortable are you in traffic?"). Route defaults follow from them.
+// Options and pure helpers live in ./rider.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import type { RouteProfile } from './routing';
+import type { Prefs } from './rider';
 
-export type BikeType = 'bike' | 'ebike' | 'road' | 'gravel';
-export type Comfort = 'paths' | 'some' | 'confident';
-
-export interface Prefs {
-  bike: BikeType;
-  comfort: Comfort;
-}
-
-export const BIKE_OPTIONS: { id: BikeType; label: string; icon: string }[] = [
-  { id: 'bike', label: 'Everyday bike', icon: 'bicycle' },
-  { id: 'ebike', label: 'E-bike', icon: 'flash' },
-  { id: 'road', label: 'Road bike', icon: 'speedometer' },
-  { id: 'gravel', label: 'Gravel / mountain', icon: 'trail-sign' },
-];
-
-export const COMFORT_OPTIONS: { id: Comfort; label: string; detail: string; profile: RouteProfile }[] = [
-  { id: 'paths', label: 'Paths and quiet streets', detail: 'Keep me away from traffic', profile: 'quiet' },
-  { id: 'some', label: 'Some traffic is OK', detail: 'Bike lanes on busier streets are fine', profile: 'balanced' },
-  { id: 'confident', label: 'Confident in traffic', detail: 'Take the most direct way', profile: 'fast' },
-];
-
-export const profileFor = (c: Comfort): RouteProfile => COMFORT_OPTIONS.find((o) => o.id === c)?.profile ?? 'quiet';
+export {
+  BIKE_OPTIONS, COMFORT_OPTIONS, EBIKE_CLASS_OPTIONS, isEbikeRider, prefsSummary, profileFor,
+  type BikeType, type Comfort, type EbikeClass, type Prefs,
+} from './rider';
 
 interface PrefsState {
   prefs: Prefs | null;
-  /** False until saved prefs have been read from the phone. */
+  /** False until saved prefs (and the skip flag) have been read from the phone. */
   loaded: boolean;
+  /** The rider chose "Skip for now" on the first-run questions; don't ask again. */
+  skipped: boolean;
   setPrefs: (p: Prefs) => void;
+  skipPrefs: () => void;
 }
 
 const KEY = 'prefs:v1';
+const SKIP_KEY = 'prefsSkipped:v1';
 const Ctx = createContext<PrefsState | null>(null);
 
 export function PrefsProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefsState] = useState<Prefs | null>(null);
+  const [skipped, setSkipped] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(KEY)
-      .then((raw) => {
+    AsyncStorage.multiGet([KEY, SKIP_KEY])
+      .then((pairs) => {
+        const raw = pairs[0]?.[1];
         if (raw) setPrefsState(JSON.parse(raw) as Prefs);
+        if (pairs[1]?.[1]) setSkipped(true);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -57,7 +47,12 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(KEY, JSON.stringify(p)).catch(() => {});
   }, []);
 
-  const value = useMemo(() => ({ prefs, loaded, setPrefs }), [prefs, loaded, setPrefs]);
+  const skipPrefs = useCallback(() => {
+    setSkipped(true);
+    AsyncStorage.setItem(SKIP_KEY, '1').catch(() => {});
+  }, []);
+
+  const value = useMemo(() => ({ prefs, loaded, skipped, setPrefs, skipPrefs }), [prefs, loaded, skipped, setPrefs, skipPrefs]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

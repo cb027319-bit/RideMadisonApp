@@ -3,6 +3,7 @@
 // in development builds when no real partners are live yet.
 
 import { cached } from './cache';
+import { ImpressionDedupe, newSessionKey, type PartnerEvent, type PartnerPlacement } from './partner-events';
 import { supabase } from './supabase';
 
 export type PartnerTier = 'featured' | 'trail' | 'corridor';
@@ -112,13 +113,20 @@ export function initials(name: string): string {
   return (words.length >= 2 ? words[0][0] + words[1][0] : (words[0] ?? '?').slice(0, 2)).toUpperCase();
 }
 
-export type PartnerEvent = 'impression' | 'open' | 'call' | 'website' | 'directions' | 'route';
+export type { PartnerEvent, PartnerPlacement } from './partner-events';
 
-/** Fire-and-forget ad reporting (skipped for sample partners). */
-export function trackPartner(p: Partner, event: PartnerEvent, placement: 'pin' | 'trail_sponsor' | 'card') {
+const impressions = new ImpressionDedupe();
+const sessionKey = newSessionKey();
+
+/**
+ * Fire-and-forget ad reporting (skipped for sample partners). Goes through the
+ * record_partner_event database function, which sets the rider from the
+ * session, checks the event kind and rate-limits repeats.
+ */
+export function trackPartner(p: Partner, event: PartnerEvent, placement: PartnerPlacement = 'card') {
   if (p.demo || !supabase) return;
+  if (!impressions.shouldSend(p.id, event, placement)) return;
   void supabase
-    .from('partner_events')
-    .insert({ partner_id: p.id, event, placement })
+    .rpc('record_partner_event', { p_partner: p.id, p_kind: event, p_placement: placement, p_session: sessionKey })
     .then(() => {}, () => {});
 }

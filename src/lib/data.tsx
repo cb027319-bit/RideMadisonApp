@@ -3,7 +3,7 @@
 
 import * as Location from 'expo-location';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState, Linking } from 'react-native';
 
 import { fetchBCycle, type BCycleStation } from './bcycle';
 import { cached } from './cache';
@@ -21,6 +21,8 @@ export type Selection =
   | { type: 'park'; item: Park };
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+export type LocationStatus = 'unknown' | 'granted' | 'denied';
 
 interface DataState {
   paths: BikePath[];
@@ -49,7 +51,18 @@ interface DataState {
   /** Last data-loading error, shown to help diagnose connection problems. */
   lastError: string | null;
   location: { latitude: number; longitude: number } | null;
+  /** 'unknown' until the rider is asked (we only ask when a feature needs it). */
+  locationStatus: LocationStatus;
+  /** Same as locationStatus === 'denied'. */
   locationDenied: boolean;
+  /**
+   * Ask for location when a feature needs it: a one-line explanation first,
+   * then the system prompt. Resolves true once location is on. Pass
+   * { quiet: true } for automatic asks: they never repeat after "Not now".
+   */
+  requestLocation: (opts?: { quiet?: boolean }) => Promise<boolean>;
+  /** Opens the phone's Settings for Ride Madison (to turn location back on). */
+  openLocationSettings: () => void;
   selection: Selection | null;
   select: (s: Selection | null) => void;
   /** Bumped when another screen asks the map to fly to the selection. */
@@ -81,7 +94,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [offlineCopy, setOfflineCopy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [location, setLocation] = useState<DataState['location']>(null);
-  const [locationDenied, setLocationDenied] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('unknown');
   const [rawSelection, setSelection] = useState<Selection | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
 
@@ -184,30 +197,116 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshStations]);
 
-  // Rider location (foreground only).
-  useEffect(() => {
-    let sub: Location.LocationSubscription | null = null;
-    let cancelled = false;
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (cancelled) return;
-      if (status !== 'granted') {
-        setLocationDenied(true);
-        return;
-      }
-      const last = await Location.getLastKnownPositionAsync();
-      if (last && !cancelled) setLocation({ latitude: last.coords.latitude, longitude: last.coords.longitude });
-      sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, distanceInterval: 50 },
-        (pos) => setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      );
-      if (cancelled) sub.remove();
-    })().catch(() => setLocationDenied(true));
-    return () => {
-      cancelled = true;
-      sub?.remove();
-    };
+  // Rider location (foreground only). Never asked at launch: only when a
+  // feature needs it. If it was already allowed, start quietly.
+  const watchRef = useRef<Location.LocationSubscription | null>(null);
+  const unmounted = useRef(false);
+  const pendingAsk = useRef<Promise<boolean> | null>(null);
+  const declinedThisLaunch = useRef(false);
+
+  const startWatching = useCallback(async () => {
+    if (watchRef.current || unmounted.current) return;
+    setLocationStatus('granted');
+    const last = await Location.getLastKnownPositionAsync().catch(() => null);
+    if (last && !unmounted.current) setLocation({ latitude: last.coords.latitude, longitude: last.coords.longitude });
+    const sub = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.Balanced, distanceInterval: 50 },
+      (pos) => setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+    );
+    if (unmounted.current || watchRef.current) sub.remove();
+    else watchRef.current = sub;
   }, []);
+
+  useEffect(() => {
+    unmounted.current = false;
+    Location.getForegroundPermissionsAsync()
+      .then((p) => {
+        if (p.granted) return startWatching();
+        if (p.status === 'denied' && !p.canAskAgain) setLocationStatus('denied');
+      })
+      .catch(() => {});
+    return () => {
+      unmounted.current = true;
+      watchRef.current?.remove();
+      watchRef.current = null;
+    };
+  }, [startWatching]);
+
+  // Coming back from Settings: pick up a change either way.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      Location.getForegroundPermissionsAsync()
+        .then((p) => {
+          if (p.granted) return startWatching();
+          if (p.status === 'denied') {
+            watchRef.current?.remove();
+            watchRef.current = null;
+            setLocationStatus((s) => (s === 'granted' || !p.canAskAgain ? 'denied' : s));
+          }
+        })
+        .catch(() => {});
+    });
+    return () => sub.remove();
+  }, [startWatching]);
+
+  const openLocationSettings = useCallback(() => {
+    void Linking.openSettings().catch(() => {});
+  }, []);
+
+  const requestLocation = useCallback(
+    (opts?: { quiet?: boolean }): Promise<boolean> => {
+      if (watchRef.current) return Promise.resolve(true);
+      if (pendingAsk.current) return pendingAsk.current;
+      const ask = (async () => {
+        const current = await Location.getForegroundPermissionsAsync();
+        if (current.granted) {
+          await startWatching();
+          return true;
+        }
+        if (!current.canAskAgain) {
+          setLocationStatus('denied');
+          if (!opts?.quiet) {
+            Alert.alert('Location is off', 'Turn on location for Ride Madison in Settings to see what’s near you and route from where you are.', [
+              { text: 'Not now', style: 'cancel' },
+              { text: 'Open Settings', onPress: openLocationSettings },
+            ]);
+          }
+          return false;
+        }
+        if (opts?.quiet && declinedThisLaunch.current) return false;
+        const go = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Use your location?',
+            'Ride Madison uses your location to show nearby paths and plan routes from where you are.',
+            [
+              { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Continue', onPress: () => resolve(true) },
+            ],
+            { cancelable: true, onDismiss: () => resolve(false) },
+          );
+        });
+        if (!go) {
+          declinedThisLaunch.current = true;
+          return false;
+        }
+        const { granted } = await Location.requestForegroundPermissionsAsync();
+        if (!granted) {
+          setLocationStatus('denied');
+          return false;
+        }
+        await startWatching();
+        return true;
+      })()
+        .catch(() => false)
+        .finally(() => {
+          pendingAsk.current = null;
+        });
+      pendingAsk.current = ask;
+      return ask;
+    },
+    [startWatching, openLocationSettings],
+  );
 
   const focus = useCallback((s: Selection) => {
     setSelection(s);
@@ -228,11 +327,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DataState>(
     () => ({
       paths, trails, trailOfPath, trailById, pathById, places, foodState, foodError, loadFood, partners, parks, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
-      offlineCopy, lastError, location, locationDenied, selection, select: setSelection,
+      offlineCopy, lastError, location, locationStatus, locationDenied: locationStatus === 'denied', requestLocation, openLocationSettings,
+      selection, select: setSelection,
       focusRequest, focus, refreshAll, refreshStations,
     }),
     [paths, trails, trailOfPath, trailById, pathById, places, foodState, foodError, loadFood, partners, parks, stations, pathsState, placesState, stationsState, stationsUpdatedAt,
-      offlineCopy, lastError, location, locationDenied, selection, focusRequest, focus, refreshAll, refreshStations],
+      offlineCopy, lastError, location, locationStatus, requestLocation, openLocationSettings, selection, focusRequest, focus, refreshAll, refreshStations],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

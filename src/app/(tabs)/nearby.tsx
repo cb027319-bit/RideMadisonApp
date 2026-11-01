@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { LocationPrompt } from '@/components/location-prompt';
 import { BRAND, COLORS, FONT, MADISON_CENTER } from '@/lib/config';
 import { useData, type Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
@@ -31,7 +32,7 @@ interface Row {
 }
 
 export default function NearbyScreen() {
-  const { stations, places, partners, foodState, foodError, loadFood, location, locationDenied, stationsUpdatedAt, refreshAll, focus } = useData();
+  const { stations, places, partners, foodState, foodError, loadFood, location, stationsUpdatedAt, refreshAll, focus } = useData();
   const [tab, setTab] = useState<Tab>('bcycle');
   const [refreshing, setRefreshing] = useState(false);
   const origin = location ?? MADISON_CENTER;
@@ -125,9 +126,10 @@ export default function NearbyScreen() {
       </View>
 
       <Text style={styles.note}>
-        {location ? 'Sorted by distance from you' : locationDenied ? 'Location off: sorted from the Capitol' : 'Finding your location…'}
+        {location ? 'Sorted by distance from you' : 'Sorted by distance from the Capitol'}
         {tab === 'bcycle' && stationsUpdatedAt ? `  ·  updated ${timeAgo(stationsUpdatedAt)}` : ''}
       </Text>
+      <LocationPrompt action="Sort by distance from you" />
 
       <FlatList
         data={rows}

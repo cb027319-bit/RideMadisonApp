@@ -89,3 +89,17 @@ riders where they are `true`.
 ## Ride stats and badges (0003)
 
 Run `supabase/migrations/0003_ride_stats.sql` in SQL Editor > New query > Run. It creates `ride_logs` (one row per finished ride, readable only by that rider). Deleting an account removes its ride log automatically.
+
+## v1 fixes: ad reporting and account deletion (0004)
+
+Run `supabase/migrations/0004_v1_fixes.sql` in SQL Editor > New query > Run (after 0001 and 0002). It:
+- stops the app writing to `partner_events` directly; the app now calls `record_partner_event()`, which fills in the
+  rider from their session, checks the event, only counts live partners and ignores repeats (impressions once per
+  30 minutes per rider or app launch);
+- links `partner_events.user_id` to the account and clears it when the account is deleted;
+- adds the `offer` event.
+
+Update the app and run this migration together: older builds insert into `partner_events` directly and their ad
+events will be refused once 0004 is in.
+
+Sign in with Apple token revocation on account deletion is still to do: see `supabase/functions/revoke-apple/README.md`.

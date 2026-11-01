@@ -10,6 +10,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
+import { friendlyAuthError, type AuthStep } from './auth-errors';
 import { accountsConfigured, fetchEnabledProviders, supabase, type Profile } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -22,7 +23,10 @@ interface AuthState {
   session: Session | null;
   profile: Profile | null;
   appleAvailable: boolean;
-  /** Google sign-in is switched on in Supabase. */
+  /**
+   * Google sign-in is switched on in Supabase. On iOS it's offered only when
+   * Sign in with Apple is too (App Store guideline 4.8).
+   */
   googleEnabled: boolean;
   /** Sign-up sheet */
   sheet: { mode: SheetMode; reason?: string } | null;
@@ -53,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [appleDevice, setAppleDevice] = useState(false);
   const [providers, setProviders] = useState({ google: false, apple: false });
   const appleAvailable = appleDevice && providers.apple;
+  const googleEnabled = providers.google && (Platform.OS !== 'ios' || appleAvailable);
   const [sheet, setSheet] = useState<AuthState['sheet']>(null);
   const [welcomeHandled, setWelcomeHandled] = useState(!accountsConfigured);
 
@@ -141,12 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sendEmailCode = useCallback(async (email: string) => {
     const { error } = await client().auth.signInWithOtp({ email: email.trim().toLowerCase(), options: { shouldCreateUser: true } });
-    if (error) throw new Error(friendly(error.message));
+    if (error) throw authError(error.message, 'email');
   }, []);
 
   const verifyEmailCode = useCallback(async (email: string, code: string) => {
     const { error } = await client().auth.verifyOtp({ email: email.trim().toLowerCase(), token: code.trim(), type: 'email' });
-    if (error) throw new Error(friendly(error.message));
+    if (error) throw authError(error.message, 'code');
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
@@ -155,16 +160,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: 'google',
       options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
     });
-    if (error || !data.url) throw new Error(friendly(error?.message ?? 'Google sign-in is not available'));
+    if (error || !data.url) throw authError(error?.message ?? 'Google sign-in is not available', 'oauth');
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
     if (result.type !== 'success') return false;
     const { queryParams } = Linking.parse(result.url);
     const err = queryParams?.error_description ?? queryParams?.error;
-    if (err) throw new Error(friendly(String(err)));
+    if (err) throw authError(String(err), 'oauth');
     const code = queryParams?.code;
     if (typeof code !== 'string') throw new Error('Google sign-in did not finish. Please try again.');
     const { error: exErr } = await client().auth.exchangeCodeForSession(code);
-    if (exErr) throw new Error(friendly(exErr.message));
+    if (exErr) throw authError(exErr.message, 'oauth');
     return true;
   }, []);
 
@@ -183,7 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (!credential.identityToken) throw new Error('Apple did not return a sign-in token.');
     const { data, error } = await client().auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
-    if (error) throw new Error(friendly(error.message));
+    if (error) throw authError(error.message, 'oauth');
     // Apple shares the name only on the very first sign-in, so save it now.
     const name = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ');
     if (name && data.user) {
@@ -201,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .upsert({ id: userId, email: session?.user.email ?? null, ...fields })
         .select('*')
         .single();
-      if (error) throw new Error(friendly(error.message));
+      if (error) throw authError(error.message, 'profile');
       setProfile(data as Profile);
     },
     [userId, session?.user.email],
@@ -212,18 +217,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteAccount = useCallback(async () => {
-    const { error } = await client().rpc('delete_my_account');
-    if (error) throw new Error(friendly(error.message));
-    await supabase?.auth.signOut();
+    let error: { message: string } | null = null;
+    try {
+      ({ error } = await client().rpc('delete_my_account'));
+    } catch (e) {
+      throw authError(e instanceof Error ? e.message : String(e), 'delete');
+    }
+    if (error) throw authError(error.message, 'delete');
+    // The account is gone; clear the local session even if this call fails.
+    await supabase?.auth.signOut({ scope: 'local' }).catch(() => {});
+    setProfile(null);
   }, []);
 
   const value = useMemo<AuthState>(
     () => ({
-      configured: accountsConfigured, ready, session, profile, appleAvailable, googleEnabled: providers.google, sheet, welcomeHandled,
+      configured: accountsConfigured, ready, session, profile, appleAvailable, googleEnabled, sheet, welcomeHandled,
       openSheet, closeSheet, requireAccount, sendEmailCode, verifyEmailCode, signInWithGoogle, signInWithApple,
       updateProfile, signOut, deleteAccount,
     }),
-    [ready, session, profile, appleAvailable, providers.google, sheet, welcomeHandled, openSheet, closeSheet, requireAccount,
+    [ready, session, profile, appleAvailable, googleEnabled, sheet, welcomeHandled, openSheet, closeSheet, requireAccount,
       sendEmailCode, verifyEmailCode, signInWithGoogle, signInWithApple, updateProfile, signOut, deleteAccount],
   );
 
@@ -236,11 +248,8 @@ export function useAuth(): AuthState {
   return v;
 }
 
-function friendly(msg: string): string {
-  const m = msg.toLowerCase();
-  if (m.includes('rate limit') || m.includes('too many')) return 'Too many tries. Please wait a minute and try again.';
-  if (m.includes('expired') || m.includes('invalid')) return 'That code is wrong or expired. Request a new one.';
-  if (m.includes('provider is not enabled') || m.includes('unsupported provider')) return 'This sign-in option is not turned on yet.';
-  if (m.includes('network')) return 'No connection. Check your signal and try again.';
-  return msg;
+/** Plain-English error for the rider; the raw text goes to the dev console only. */
+function authError(raw: string, step: AuthStep): Error {
+  if (__DEV__) console.warn(`[auth:${step}]`, raw);
+  return new Error(friendlyAuthError(raw, step));
 }

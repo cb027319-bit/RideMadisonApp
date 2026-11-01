@@ -71,7 +71,7 @@ let nextId = 1;
 const newId = () => `s${Date.now().toString(36)}${nextId++}`;
 
 export function RouteProvider({ children }: { children: ReactNode }) {
-  const { location } = useData();
+  const { location, locationStatus, requestLocation } = useData();
   const { prefs } = usePrefs();
   const { configured: accounts, session } = useAuth();
   const userId = session?.user.id;
@@ -128,6 +128,12 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   }, [accounts, userId]);
 
   const usingMyLocation = startFromMe && location != null;
+
+  // First need for location: a ride that starts "from my location" has a stop.
+  const needsLocation = startFromMe && stops.length > 0 && locationStatus === 'unknown';
+  useEffect(() => {
+    if (needsLocation) void requestLocation({ quiet: true });
+  }, [needsLocation, requestLocation]);
 
   const waypoints = useMemo<LatLon[]>(() => {
     const pts: LatLon[] = [];

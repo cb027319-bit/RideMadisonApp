@@ -19,7 +19,7 @@ import type { Place, PlaceKind } from '@/lib/osm';
 import { cached } from '@/lib/cache';
 import { fetchParkTrails, parkBBoxOf, type ParkTrail } from '@/lib/parks';
 import { sponsorForTrail, trackPartner } from '@/lib/partners';
-import { usePrefs } from '@/lib/prefs';
+import { isEbikeRider, usePrefs } from '@/lib/prefs';
 import { useRoute } from '@/lib/route';
 import { closestPointOnTrail, nearestPath } from '@/lib/trails';
 import { describe, fetchWeather, type RideWeather } from '@/lib/weather';
@@ -52,12 +52,11 @@ const HIGHLIGHT = '#facc15';
 export default function MapScreen() {
   const {
     paths, trailOfPath, trailById, pathById, places, partners, parks, stations, pathsState, placesState, stationsState,
-    stationsUpdatedAt, offlineCopy, lastError, location, selection, select, focusRequest, refreshAll, loadFood,
+    stationsUpdatedAt, offlineCopy, lastError, location, locationStatus, requestLocation, selection, select, focusRequest, refreshAll, loadFood,
   } = useData();
   const { routeTo, requestSearch } = useRoute();
-  const { prefs, loaded: prefsLoaded, setPrefs } = usePrefs();
+  const { prefs, loaded: prefsLoaded, skipped: prefsSkipped, setPrefs, skipPrefs } = usePrefs();
   const auth = useAuth();
-  const [onboardingSkipped, setOnboardingSkipped] = useState(false);
   const launchDone = useLaunchDone();
   const mapRef = useRef<MapView>(null);
   const [mapHeight, setMapHeight] = useState(700);
@@ -202,10 +201,24 @@ export default function MapScreen() {
     select(trail ? { type: 'trail', item: trail } : null);
   };
 
-  const recenter = () => {
-    const target = location ?? MADISON_CENTER;
-    mapRef.current?.animateToRegion({ ...target, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 500);
+  // Locate button: asks for location the first time, then centers once a fix arrives.
+  const recenterWanted = useRef(false);
+  const recenter = async () => {
+    if (!location) {
+      recenterWanted.current = true;
+      if (!(await requestLocation())) {
+        recenterWanted.current = false;
+        mapRef.current?.animateToRegion({ ...MADISON_CENTER, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 500);
+      }
+      return;
+    }
+    mapRef.current?.animateToRegion({ ...location, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 500);
   };
+  useEffect(() => {
+    if (!location || !recenterWanted.current) return;
+    recenterWanted.current = false;
+    mapRef.current?.animateToRegion({ ...location, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 500);
+  }, [location]);
 
   const toggle = (id: LayerId) => {
     if ((id === 'food' || id === 'drink') && !layers[id]) loadFood();
@@ -234,7 +247,7 @@ export default function MapScreen() {
         initialRegion={INITIAL_REGION}
         onRegionChangeComplete={setRegion}
         onPress={onMapPress}
-        showsUserLocation
+        showsUserLocation={locationStatus === 'granted'}
         showsMyLocationButton={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}>
@@ -402,7 +415,7 @@ export default function MapScreen() {
             <Text style={styles.tipText}>Tap any trail for length, surface and trail rules</Text>
           </View>
         )}
-        <Pressable style={styles.locate} onPress={recenter} accessibilityLabel="Center on my location">
+        <Pressable style={styles.locate} onPress={() => void recenter()} accessibilityRole="button" accessibilityLabel="Center on my location">
           <Ionicons name="locate" size={22} color={COLORS.brand} />
         </Pressable>
         {selection && (
@@ -410,7 +423,7 @@ export default function MapScreen() {
             selection={selection}
             location={location}
             target={targetFor(selection)}
-            isEbikeRider={prefs?.bike === 'ebike'}
+            isEbikeRider={isEbikeRider(prefs)}
             sponsor={selection.type === 'trail' ? sponsorForTrail(partners, selection.item.name) : undefined}
             onOpenPartner={(p) => select({ type: 'partner', item: p })}
             parkTrails={currentParkTrails}
@@ -426,12 +439,12 @@ export default function MapScreen() {
       </View>
 
       <Onboarding
-        visible={launchDone && prefsLoaded && !prefs && !onboardingSkipped && auth.ready && auth.welcomeHandled && !auth.sheet}
+        visible={launchDone && prefsLoaded && !prefs && !prefsSkipped && auth.ready && auth.welcomeHandled && !auth.sheet}
         onDone={(p) => {
           setPrefs(p);
           if (auth.session) void auth.updateProfile({ bike_type: p.bike, comfort: p.comfort }).catch(() => {});
         }}
-        onSkip={() => setOnboardingSkipped(true)}
+        onSkip={skipPrefs}
       />
     </View>
   );
