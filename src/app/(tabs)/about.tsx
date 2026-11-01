@@ -5,6 +5,8 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, T
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { HorizontalLogo } from '@/components/brand';
+import { RideStats } from '@/components/ride-stats';
+import { useRideLog } from '@/lib/ridelog';
 import { TAGLINE } from '@/components/launch-screen';
 import { Onboarding } from '@/components/onboarding';
 import { useAuth } from '@/lib/auth';
@@ -39,6 +41,7 @@ export default function AboutScreen() {
   const { refreshAll, paths, places, stations } = useData();
   const { prefs, setPrefs } = usePrefs();
   const auth = useAuth();
+  const { logs } = useRideLog();
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [openGuide, setOpenGuide] = useState<number | null>(null);
@@ -99,6 +102,20 @@ export default function AboutScreen() {
             </Pressable>
           )}
         </>
+      )}
+
+      <Text style={styles.h2}>Your stats</Text>
+      {auth.session || !auth.configured ? (
+        <RideStats logs={logs} />
+      ) : (
+        <Pressable style={styles.statsTeaser} onPress={() => auth.openSheet('gate')} accessibilityRole="button">
+          <Text style={styles.prefsText}>Track your miles and earn badges</Text>
+          <Text style={styles.prefsHint}>
+            {logs.length
+              ? `${logs.length} ${logs.length === 1 ? 'ride' : 'rides'} saved on this phone. Create a free account to keep them and see your stats.`
+              : 'Create a free account to see miles, average speed and badges for every ride.'}
+          </Text>
+        </Pressable>
       )}
 
       <Text style={styles.h2}>Your riding</Text>
@@ -212,6 +229,7 @@ const styles = StyleSheet.create({
   link: { color: COLORS.brand, textDecorationLine: 'underline', fontWeight: '600' },
   accountBox: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14, backgroundColor: '#fff' },
   accountActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 18, marginTop: 12 },
+  statsTeaser: { backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 4 },
   signInBtn: { backgroundColor: COLORS.brand, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   prefsRow: {
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14,

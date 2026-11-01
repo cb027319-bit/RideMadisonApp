@@ -11,6 +11,8 @@ export interface Trip {
   /** Points the route was planned through, in order (labels shown in the tour). */
   points: (LatLon & { label: string })[];
   profile: RouteProfile;
+  /** Suggested ride id, when this trip is one of ours (for badges). */
+  rideId?: string;
 }
 
 interface TripState {

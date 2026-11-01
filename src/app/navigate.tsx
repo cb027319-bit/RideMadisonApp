@@ -14,6 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BikeMarker, ManeuverIcon } from '@/components/maneuver-icon';
 import { useAuth } from '@/lib/auth';
+import { useRideLog } from '@/lib/ridelog';
+import { addFix, MIN_LOG_M, newRecorder, type Badge } from '@/lib/stats';
 import { BRAND, COLORS, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
@@ -61,6 +63,7 @@ export default function NavigateScreen() {
   const { paths } = useData();
   const route = useRoute();
   const auth = useAuth();
+  const rideLog = useRideLog();
   const mapRef = useRef<MapView>(null);
 
   const build = (coords: LatLon[], waypoints: LatLon[], timeS: number): NavRoute => {
@@ -91,6 +94,13 @@ export default function NavigateScreen() {
     return () => clearInterval(t);
   }, []);
   const [ridden, setRidden] = useState(0);
+  // Ride recording for profile stats and badges.
+  const recorder = useRef(newRecorder());
+  const maxAlong = useRef(0);
+  const usedSim = useRef(false);
+  const logged = useRef(false);
+  const [newBadges, setNewBadges] = useState<Badge[]>([]);
+  const [summary, setSummary] = useState<{ distanceM: number; movingS: number } | null>(null);
 
   const start = trip?.result.coords[0] ?? { latitude: 43.07, longitude: -89.38 };
   // Let the bike icon finish drawing before the map freezes it as an image.
@@ -162,12 +172,14 @@ export default function NavigateScreen() {
       if (d < 100) setRidden((m) => m + d);
     }
     lastPos.current = pos;
+    recorder.current = addFix(recorder.current, pos.latitude, pos.longitude, Date.now(), speed);
 
     const p = project(current.line, pos, alongRef.current);
     offCount.current = p.offRoute > OFF_ROUTE_M ? offCount.current + 1 : 0;
     if (offCount.current >= 3) void reroute(pos);
 
     alongRef.current = p.along;
+    if (p.offRoute <= OFF_ROUTE_M) maxAlong.current = Math.max(maxAlong.current, p.along);
     setAlong(p.along);
     const shown = p.offRoute > OFF_ROUTE_M ? pos : p.snapped;
     setSnapped(shown);
@@ -227,6 +239,7 @@ export default function NavigateScreen() {
   // Simulated ride (testing at home): rides the route at ~15 mph.
   useEffect(() => {
     if (!simulating) return;
+    usedSim.current = true;
     let simAlong = alongRef.current;
     const timer = setInterval(() => {
       const current = navRef.current;
@@ -254,6 +267,44 @@ export default function NavigateScreen() {
     const here = pointAt(nav.line, along);
     return { done: [...coords.slice(0, cut), here], todo: [here, ...coords.slice(cut)] };
   }, [nav, along]);
+
+  /** Save the ride to the rider's log (once). Simulated rides count only in development. */
+  const logRide = async (): Promise<Badge[]> => {
+    if (logged.current || !trip || !nav) return [];
+    const r = recorder.current;
+    if (r.distanceM < MIN_LOG_M || (usedSim.current && !__DEV__)) return [];
+    logged.current = true;
+    const fraction = Math.min(1, maxAlong.current / Math.max(1, nav.line.total));
+    try {
+      return await rideLog.addRide({
+        startedAt,
+        distanceM: r.distanceM,
+        movingS: r.movingS,
+        elapsedS: (Date.now() - startedAt) / 1000,
+        climbM: trip.result.climbM * fraction,
+        maxSpeedMps: r.maxSpeedMps,
+        title: trip.title,
+        rideId: trip.rideId ?? null,
+      });
+    } catch {
+      return [];
+    }
+  };
+  const logRideRef = useRef(logRide);
+  useEffect(() => {
+    logRideRef.current = logRide;
+  });
+
+  // On arrival: log the ride and show its stats plus any badge it earned.
+  useEffect(() => {
+    if (!arrived) return;
+    const r = recorder.current;
+    const t = setTimeout(() => {
+      setSummary({ distanceM: r.distanceM, movingS: r.movingS });
+      void logRideRef.current().then(setNewBadges);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [arrived]);
 
   if (!trip || !nav) {
     return (
@@ -283,6 +334,9 @@ export default function NavigateScreen() {
   };
   const end = () => {
     Speech.stop();
+    void logRide().then((earned) => {
+      if (earned.length) Alert.alert('New badge!', earned.map((b) => b.name).join(', '));
+    });
     router.back();
   };
 
@@ -390,6 +444,18 @@ export default function NavigateScreen() {
             <Text style={styles.arrivedStats}>
               {formatDistance(Math.max(ridden, nav.line.total * 0.98))}  ·  {formatDuration((now - startedAt) / 1000)}
             </Text>
+            {summary && summary.movingS > 30 && (
+              <Text style={styles.arrivedSub}>
+                Avg {((summary.distanceM / 1609.344) / (summary.movingS / 3600)).toFixed(1)} mph moving
+                {auth.session ? '  ·  Added to your stats' : ''}
+              </Text>
+            )}
+            {newBadges.length > 0 && (
+              <View style={styles.badgeWon}>
+                <Ionicons name="ribbon" size={18} color={BRAND.navy} />
+                <Text style={styles.badgeWonText}>New badge: {newBadges.map((b) => b.name).join(', ')}</Text>
+              </View>
+            )}
             <Text style={styles.arrivedSub}>{trip.title}</Text>
             <Pressable
               style={styles.primary}
@@ -451,6 +517,8 @@ const styles = StyleSheet.create({
   arrivedCard: { backgroundColor: '#fff', borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
   arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: COLORS.text },
   arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: BRAND.red },
+  badgeWon: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BRAND.gold, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 4 },
+  badgeWonText: { fontFamily: FONT.bold, fontSize: 15, color: BRAND.navy },
   arrivedSub: { fontSize: 14, color: COLORS.muted, marginBottom: 8, textAlign: 'center' },
   primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   primaryText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },

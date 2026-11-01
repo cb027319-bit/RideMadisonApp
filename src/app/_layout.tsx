@@ -16,6 +16,7 @@ import { AuthProvider } from "@/lib/auth";
 import { BRAND, COLORS } from "@/lib/config";
 import { DataProvider } from "@/lib/data";
 import { PrefsProvider } from "@/lib/prefs";
+import { RideLogProvider } from "@/lib/ridelog";
 import { RouteProvider } from "@/lib/route";
 import { TripProvider } from "@/lib/trip";
 
@@ -58,36 +59,38 @@ export default function RootLayout() {
           <AuthProvider>
             <DataProvider>
               <RouteProvider>
-                <TripProvider>
-                  <Stack>
-                    <Stack.Screen
-                      name="(tabs)"
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name="navigate"
-                      options={{
-                        headerShown: false,
-                        presentation: "fullScreenModal",
-                        gestureEnabled: false,
-                        animation: "fade",
-                      }}
-                    />
-                    <Stack.Screen
-                      name="tour"
-                      options={{
-                        headerShown: false,
-                        presentation: "fullScreenModal",
-                        animation: "fade",
-                      }}
-                    />
-                  </Stack>
-                  {!showLaunch && <AuthSheet />}
-                  <StatusBar style={showLaunch ? "light" : "dark"} />
-                  {showLaunch && (
-                    <LaunchScreen onDone={() => setShowLaunch(false)} />
-                  )}
-                </TripProvider>
+                <RideLogProvider>
+                  <TripProvider>
+                    <Stack>
+                      <Stack.Screen
+                        name="(tabs)"
+                        options={{ headerShown: false }}
+                      />
+                      <Stack.Screen
+                        name="navigate"
+                        options={{
+                          headerShown: false,
+                          presentation: "fullScreenModal",
+                          gestureEnabled: false,
+                          animation: "fade",
+                        }}
+                      />
+                      <Stack.Screen
+                        name="tour"
+                        options={{
+                          headerShown: false,
+                          presentation: "fullScreenModal",
+                          animation: "fade",
+                        }}
+                      />
+                    </Stack>
+                    {!showLaunch && <AuthSheet />}
+                    <StatusBar style={showLaunch ? "light" : "dark"} />
+                    {showLaunch && (
+                      <LaunchScreen onDone={() => setShowLaunch(false)} />
+                    )}
+                  </TripProvider>
+                </RideLogProvider>
               </RouteProvider>
             </DataProvider>
           </AuthProvider>

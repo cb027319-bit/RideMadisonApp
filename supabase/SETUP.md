@@ -85,3 +85,7 @@ riders where they are `true`.
   (the sign-up screen links there).
 - App Store Connect → App Privacy: declare name, email, phone, coarse location.
 - Account deletion is built in (More → Account → Delete account).
+
+## Ride stats and badges (0003)
+
+Run `supabase/migrations/0003_ride_stats.sql` in SQL Editor > New query > Run. It creates `ride_logs` (one row per finished ride, readable only by that rider). Deleting an account removes its ride log automatically.

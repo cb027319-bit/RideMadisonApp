@@ -393,7 +393,7 @@ export default function RouteScreen() {
         onClose={() => setShowIdeas(false)}
         onPreview={(ride, result) => {
           const pts = routePoints(ride).map((pt, i) => ({ ...pt, label: labelFor(ride, i) }));
-          setTrip({ title: ride.name, result, points: pts, profile: ride.profile });
+          setTrip({ title: ride.name, result, points: pts, profile: ride.profile, rideId: ride.id });
           setShowIdeas(false);
           setTimeout(() => router.push('/tour'), 350); // let the sheet close first
         }}
