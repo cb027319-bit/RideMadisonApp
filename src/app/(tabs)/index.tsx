@@ -416,24 +416,34 @@ export default function MapScreen() {
       </MapView>
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
-        <Pressable
-          style={styles.whereTo}
-          onPress={() => {
-            select(null);
-            requestSearch();
-            router.navigate('/route');
-          }}
-          accessibilityRole="search"
-          accessibilityLabel={t('map.whereToA11y')}>
-          <View style={styles.whereToLogo}>
+        <View style={styles.whereTo}>
+          {/* The logo is decoration only: tapping it does nothing (no keyboard). */}
+          <View style={styles.whereToLogo} accessible={false} importantForAccessibility="no-hide-descendants">
             <LogoMark size={26} color={BRAND.limestone} />
           </View>
-          <Text style={styles.whereToText}>{t('map.whereTo')}</Text>
-          <View style={styles.whereToBadge}>
+          <Pressable
+            style={styles.whereToTap}
+            onPress={() => {
+              select(null);
+              requestSearch();
+              router.navigate('/route');
+            }}
+            accessibilityRole="search"
+            accessibilityLabel={t('map.whereToA11y')}>
+            <Text style={styles.whereToText}>{t('map.whereTo')}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.whereToBadge}
+            onPress={() => {
+              select(null);
+              router.navigate('/route');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t('map.tab.route')}>
             <Ionicons name="navigate" size={14} color={c.onAccent} />
             <Text style={styles.whereToBadgeText}>{t('map.tab.route')}</Text>
-          </View>
-        </Pressable>
+          </Pressable>
+        </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {chips.map((l) => {
@@ -632,7 +642,8 @@ const useStyles = makeStyles((c) => {
       flexDirection: 'row', alignItems: 'center', paddingLeft: 5, paddingRight: 6, gap: 10, ...shadow,
     },
     whereToLogo: { width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
-    whereToText: { flex: 1, fontSize: 18, fontFamily: FONT.bold, color: c.text },
+    whereToTap: { flex: 1, alignSelf: 'stretch', justifyContent: 'center', minHeight: 44 },
+    whereToText: { fontSize: 18, fontFamily: FONT.bold, color: c.text },
     whereToBadge: {
       flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.accent,
       paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,

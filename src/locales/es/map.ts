@@ -228,7 +228,7 @@ export const map: Dict<typeof en> = {
   'map.osmSource': 'Datos del mapa: colaboradores de OpenStreetMap',
   'map.canIRide': '¿Puedo andar en bici aquí?',
   'map.trailPassA11y': 'Pase de sendero: {verdict}',
-  'map.bikesWelcome': 'Bicis bienvenidas',
+  'map.bikesWelcome': 'Se permiten bicis',
   'map.noPass': 'No necesitas pase de sendero.',
   'map.ebikeRules': 'Reglas para bicis eléctricas',
   'map.rulesFrom': 'Reglas de {manager} · revisadas en oct. 2026',
