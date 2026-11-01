@@ -9,7 +9,7 @@ import type { Prefs } from './rider';
 
 export {
   BIKE_OPTIONS, COMFORT_OPTIONS, EBIKE_CLASS_OPTIONS, isEbikeRider, prefsSummary, profileFor,
-  type BikeType, type Comfort, type EbikeClass, type Prefs,
+  type BikeType, type Comfort, type EbikeClass, type Prefs, type Tr,
 } from './rider';
 
 interface PrefsState {

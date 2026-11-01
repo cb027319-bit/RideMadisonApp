@@ -11,6 +11,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Platform } from 'react-native';
 
 import { friendlyAuthError, type AuthStep } from './auth-errors';
+import { t } from './i18n';
 import { accountsConfigured, fetchEnabledProviders, supabase, type Profile } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -101,8 +102,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userId = session?.user.id;
   useEffect(() => {
     if (!supabase || !userId) {
-      const t = setTimeout(() => setProfile(null), 0);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setProfile(null), 0);
+      return () => clearTimeout(timer);
     }
     let cancelled = false;
     supabase
@@ -140,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const client = () => {
-    if (!supabase) throw new Error('Accounts are not set up yet');
+    if (!supabase) throw new Error(t('more.err.notSetUp'));
     return supabase;
   };
 
@@ -167,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const err = queryParams?.error_description ?? queryParams?.error;
     if (err) throw authError(String(err), 'oauth');
     const code = queryParams?.code;
-    if (typeof code !== 'string') throw new Error('Google sign-in did not finish. Please try again.');
+    if (typeof code !== 'string') throw new Error(t('more.err.googleUnfinished'));
     const { error: exErr } = await client().auth.exchangeCodeForSession(code);
     if (exErr) throw authError(exErr.message, 'oauth');
     return true;
@@ -184,9 +185,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } catch (e) {
       if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return false;
-      throw new Error('Apple sign-in did not finish. Please try again.');
+      throw new Error(t('more.err.appleUnfinished'));
     }
-    if (!credential.identityToken) throw new Error('Apple did not return a sign-in token.');
+    if (!credential.identityToken) throw new Error(t('more.err.appleNoToken'));
     const { data, error } = await client().auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
     if (error) throw authError(error.message, 'oauth');
     // Apple shares the name only on the very first sign-in, so save it now.
@@ -248,8 +249,8 @@ export function useAuth(): AuthState {
   return v;
 }
 
-/** Plain-English error for the rider; the raw text goes to the dev console only. */
+/** Plain-language error for the rider (current language); the raw text goes to the dev console only. */
 function authError(raw: string, step: AuthStep): Error {
   if (__DEV__) console.warn(`[auth:${step}]`, raw);
-  return new Error(friendlyAuthError(raw, step));
+  return new Error(friendlyAuthError(raw, step, t));
 }

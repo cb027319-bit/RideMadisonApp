@@ -1,7 +1,18 @@
 // Rider setup options and helpers (pure: no React, no storage), shared by
 // onboarding, the More tab and trail rules. Unit-tested in tests/rider.test.ts.
 
+import { EN, type Key } from '../locales';
 import type { RouteProfile } from './routing';
+
+/**
+ * Translator passed in by UI code (`useT().t` or i18n `t`). This file stays
+ * free of React/Expo imports so it runs in node tests, which use English.
+ */
+export type Tr = (key: Key, vars?: Record<string, string | number>) => string;
+
+/** English translator for tests and defaults (no _one plurals needed here). */
+export const englishT: Tr = (key, vars) =>
+  EN[key].replace(/\{(\w+)\}/g, (_, k: string) => (vars?.[k] == null ? '' : String(vars[k])));
 
 export type BikeType = 'bike' | 'ebike' | 'bcycle' | 'road' | 'gravel' | 'tandem';
 export type Comfort = 'paths' | 'some' | 'confident';
@@ -15,26 +26,46 @@ export interface Prefs {
   ebikeClass?: EbikeClass;
 }
 
-export const BIKE_OPTIONS: { id: BikeType; label: string; icon: string }[] = [
-  { id: 'bike', label: 'Everyday bike', icon: 'bicycle' },
-  { id: 'ebike', label: 'E-bike', icon: 'flash' },
-  { id: 'bcycle', label: 'BCycle (renting)', icon: 'key' },
-  { id: 'road', label: 'Road bike', icon: 'speedometer' },
-  { id: 'gravel', label: 'Gravel / mountain', icon: 'trail-sign' },
-  { id: 'tandem', label: 'Tandem / adaptive', icon: 'people' },
+// `label` / `detail` are English; UI shows t(labelKey) / t(detailKey).
+const bike = (id: BikeType, icon: string) => {
+  const labelKey = `more.bike.${id}` as Key;
+  return { id, labelKey, label: englishT(labelKey), icon };
+};
+
+export const BIKE_OPTIONS: { id: BikeType; labelKey: Key; label: string; icon: string }[] = [
+  bike('bike', 'bicycle'),
+  bike('ebike', 'flash'),
+  bike('bcycle', 'key'),
+  bike('road', 'speedometer'),
+  bike('gravel', 'trail-sign'),
+  bike('tandem', 'people'),
 ];
 
-export const EBIKE_CLASS_OPTIONS: { id: EbikeClass; label: string; detail: string }[] = [
-  { id: '1', label: 'Class 1', detail: 'Pedal assist, up to 20 mph' },
-  { id: '2', label: 'Class 2', detail: 'Has a throttle, up to 20 mph' },
-  { id: '3', label: 'Class 3', detail: 'Pedal assist, up to 28 mph' },
-  { id: 'unsure', label: 'Not sure', detail: 'We’ll show the rules for every class' },
+const cls = (id: EbikeClass) => {
+  const labelKey = `more.class.${id}` as Key;
+  const detailKey = `more.class.${id}Detail` as Key;
+  return { id, labelKey, detailKey, label: englishT(labelKey), detail: englishT(detailKey) };
+};
+
+export const EBIKE_CLASS_OPTIONS: { id: EbikeClass; labelKey: Key; detailKey: Key; label: string; detail: string }[] = [
+  cls('1'),
+  cls('2'),
+  cls('3'),
+  cls('unsure'),
 ];
 
-export const COMFORT_OPTIONS: { id: Comfort; label: string; detail: string; profile: RouteProfile }[] = [
-  { id: 'paths', label: 'Paths and quiet streets', detail: 'Keep me away from traffic', profile: 'quiet' },
-  { id: 'some', label: 'Some traffic is OK', detail: 'Bike lanes on busier streets are fine', profile: 'balanced' },
-  { id: 'confident', label: 'Confident in traffic', detail: 'Take the most direct way', profile: 'fast' },
+const comfort = (id: Comfort, profile: RouteProfile) => {
+  const labelKey = `more.comfort.${id}` as Key;
+  const detailKey = `more.comfort.${id}Detail` as Key;
+  return { id, labelKey, detailKey, label: englishT(labelKey), detail: englishT(detailKey), profile };
+};
+
+export const COMFORT_OPTIONS: {
+  id: Comfort; labelKey: Key; detailKey: Key; label: string; detail: string; profile: RouteProfile;
+}[] = [
+  comfort('paths', 'quiet'),
+  comfort('some', 'balanced'),
+  comfort('confident', 'fast'),
 ];
 
 export const profileFor = (c: Comfort): RouteProfile => COMFORT_OPTIONS.find((o) => o.id === c)?.profile ?? 'quiet';
@@ -55,10 +86,11 @@ export function buildPrefs(bike: BikeType, comfort: Comfort, ebikeClass: EbikeCl
 }
 
 /** One-line summary for the More tab, e.g. "E-bike (Class 1) · Some traffic is OK". */
-export function prefsSummary(p: Prefs | null): string {
-  if (!p) return 'Not set yet';
-  const bike = BIKE_OPTIONS.find((b) => b.id === p.bike)?.label ?? 'Bike';
-  const cls = p.bike === 'ebike' && p.ebikeClass && p.ebikeClass !== 'unsure' ? ` (Class ${p.ebikeClass})` : '';
-  const comfort = COMFORT_OPTIONS.find((c) => c.id === p.comfort)?.label ?? '';
-  return comfort ? `${bike}${cls} · ${comfort}` : `${bike}${cls}`;
+export function prefsSummary(p: Prefs | null, t: Tr = englishT): string {
+  if (!p) return t('more.prefsNotSet');
+  const b = BIKE_OPTIONS.find((o) => o.id === p.bike);
+  const bikeLabel = b ? t(b.labelKey) : t('more.bike.fallback');
+  const cl = p.bike === 'ebike' && p.ebikeClass && p.ebikeClass !== 'unsure' ? t('more.class.inSummary', { n: p.ebikeClass }) : '';
+  const c = COMFORT_OPTIONS.find((o) => o.id === p.comfort);
+  return c ? `${bikeLabel}${cl} · ${t(c.labelKey)}` : `${bikeLabel}${cl}`;
 }

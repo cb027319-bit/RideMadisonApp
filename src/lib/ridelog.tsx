@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { useAuth } from './auth';
-import { newlyEarned, type Badge, type RideLog } from './stats';
+import { t } from './i18n';
+import { localizeBadge, newlyEarned, type Badge, type RideLog } from './stats';
 import { accountsConfigured, supabase } from './supabase';
 
 const LOCAL_KEY = 'ridelog:local:v1';
@@ -14,7 +15,7 @@ const LOCAL_KEY = 'ridelog:local:v1';
 interface RideLogState {
   logs: RideLog[];
   loading: boolean;
-  /** Record a finished ride. Returns badges this ride just earned. */
+  /** Record a finished ride. Returns badges this ride just earned (names in the rider's language). */
   addRide: (log: Omit<RideLog, 'id'>) => Promise<Badge[]>;
 }
 
@@ -120,7 +121,7 @@ export function RideLogProvider({ children }: { children: ReactNode }) {
       } else {
         await writeLocal(after);
       }
-      return newlyEarned(before, after);
+      return newlyEarned(before, after).map((b) => localizeBadge(b, t));
     },
     [logs, userId],
   );
