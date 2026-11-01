@@ -94,3 +94,18 @@ test('simplify keeps endpoints and the shape-defining corner', () => {
   const out = simplify([[0, 0], [1, 0.000001], [2, 0], [2, 1]], 0.001);
   assert.deepEqual(out, [[0, 0], [2, 0], [2, 1]]);
 });
+
+test('restaurants, cafes, bars and breweries become food and drink places', () => {
+  const places = parsePlaces({
+    elements: [
+      { type: 'node', id: 10, lat: 43.07, lon: -89.38, tags: { amenity: 'restaurant', name: 'Trailside Grill', cuisine: 'burger;american', outdoor_seating: 'yes' } },
+      { type: 'node', id: 11, lat: 43.07, lon: -89.38, tags: { amenity: 'cafe', name: 'Bean There' } },
+      { type: 'way', id: 12, center: { lat: 43.07, lon: -89.38 }, tags: { craft: 'brewery', amenity: 'pub', name: 'Hop Haus' } },
+      { type: 'node', id: 13, lat: 43.07, lon: -89.38, tags: { amenity: 'bar', name: 'The Spoke' } },
+    ],
+  });
+  assert.deepEqual(places.map((p) => p.kind), ['food', 'food', 'drink', 'drink']);
+  assert.deepEqual(places[0].details, ['Restaurant', 'burger, american', 'Patio']);
+  assert.deepEqual(places[1].details, ['Café']);
+  assert.deepEqual(places[2].details, ['Brewery']);
+});

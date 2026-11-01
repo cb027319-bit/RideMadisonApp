@@ -8,6 +8,7 @@ import type { Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { PATH_META, PLACE_META, timeAgo } from '@/lib/labels';
 import { callPhone, openBikeDirections, openWebsite } from '@/lib/links';
+import type { ParkTrail } from '@/lib/parks';
 import { CATEGORY_LABEL, initials, trackPartner, type Partner } from '@/lib/partners';
 import { TRAIL_PASS_URL, type Trail } from '@/lib/trails';
 
@@ -20,11 +21,16 @@ interface Props {
   /** Corridor sponsor of the selected trail, if any. */
   sponsor?: Partner;
   onOpenPartner?: (p: Partner) => void;
+  /** Trails inside the selected state park. */
+  parkTrails?: { state: 'loading' | 'ready' | 'error'; trails: ParkTrail[] };
+  onRetryParkTrails?: () => void;
   onClose: () => void;
   onRouteHere: (label: string) => void;
 }
 
-export function DetailCard({ selection, location, target, isEbikeRider, sponsor, onOpenPartner, onClose, onRouteHere }: Props) {
+export function DetailCard({
+  selection, location, target, isEbikeRider, sponsor, onOpenPartner, parkTrails, onRetryParkTrails, onClose, onRouteHere,
+}: Props) {
   const dist = location
     ? formatDistance(distanceMeters(location.latitude, location.longitude, target.latitude, target.longitude))
     : null;
@@ -68,7 +74,11 @@ export function DetailCard({ selection, location, target, isEbikeRider, sponsor,
       )}
 
       <ScrollView style={{ maxHeight: 260 }} bounces={false}>
-        <Body selection={selection} isEbikeRider={isEbikeRider} />
+        {selection.type === 'park' ? (
+          <ParkBody website={selection.item.website} trails={parkTrails} onRetry={onRetryParkTrails} />
+        ) : (
+          <Body selection={selection} isEbikeRider={isEbikeRider} />
+        )}
       </ScrollView>
 
       <View style={styles.actions}>
@@ -83,6 +93,9 @@ export function DetailCard({ selection, location, target, isEbikeRider, sponsor,
         />
         {selection.type === 'trail' && selection.item.rules && (
           <Action icon="ticket-outline" label="Trail pass" onPress={() => void Linking.openURL(TRAIL_PASS_URL)} />
+        )}
+        {selection.type === 'park' && selection.item.website && (
+          <Action icon="globe-outline" label="Park info" onPress={() => openWebsite(selection.item.website!)} />
         )}
         {selection.type === 'station' && (
           <Action icon="flash-outline" label="BCycle app" onPress={() => void Linking.openURL('https://madison.bcycle.com')} />
@@ -125,6 +138,7 @@ export function DetailCard({ selection, location, target, isEbikeRider, sponsor,
 function Body({ selection, isEbikeRider }: { selection: Selection; isEbikeRider?: boolean }) {
   if (selection.type === 'trail') return <TrailBody trail={selection.item} isEbikeRider={isEbikeRider} />;
   if (selection.type === 'partner') return <PartnerBody partner={selection.item} />;
+  if (selection.type === 'park') return null; // rendered by ParkBody
   if (selection.type === 'station') {
     const s = selection.item;
     return (
@@ -149,6 +163,55 @@ function Body({ selection, isEbikeRider }: { selection: Selection; isEbikeRider?
       {p.hours ? <Text style={styles.line}>Hours: {p.hours}</Text> : null}
       {p.details.length > 0 && <Text style={styles.line}>{p.details.join('  ·  ')}</Text>}
       <Text style={styles.source}>Source: OpenStreetMap · confirm hours before you go</Text>
+    </View>
+  );
+}
+
+function ParkBody({ trails, onRetry }: {
+  website?: string; trails?: Props['parkTrails']; onRetry?: () => void;
+}) {
+  const bikeCount = trails?.trails.filter((t) => t.access === 'bike').length ?? 0;
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={styles.rules}>
+        <Text style={styles.rulesTitle}>Good to know</Text>
+        <Rule icon="car-outline" text="Cars stopping in Wisconsin state parks need a vehicle admission pass." />
+        <Rule icon="ticket-outline" text="Biking some park trails needs a state trail pass (age 16+, $5/day or $25/year). Check signs at the trailhead." />
+      </View>
+
+      <Text style={styles.sectionTitle}>
+        Trails in this park
+        {trails?.state === 'ready' ? `  ·  ${trails.trails.length} mapped${bikeCount ? `, ${bikeCount} open to bikes` : ''}` : ''}
+      </Text>
+      {(!trails || trails.state === 'loading') && <Text style={styles.muted}>Loading trails…</Text>}
+      {trails?.state === 'error' && (
+        <Pressable onPress={onRetry}>
+          <Text style={styles.warn}>Couldn&apos;t load trails. Tap to retry.</Text>
+        </Pressable>
+      )}
+      {trails?.state === 'ready' && trails.trails.length === 0 && (
+        <Text style={styles.muted}>No named trails are mapped here yet.</Text>
+      )}
+      {trails?.state === 'ready' &&
+        trails.trails.map((t) => (
+          <View key={t.name} style={styles.parkTrail}>
+            <Ionicons
+              name={t.access === 'bike' ? 'bicycle' : t.access === 'no_bike' ? 'walk' : 'help-circle-outline'}
+              size={18}
+              color={t.access === 'bike' ? '#15803d' : t.access === 'no_bike' ? '#a16207' : COLORS.muted}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.parkTrailName} numberOfLines={1}>{t.name}</Text>
+              <Text style={styles.muted}>
+                {formatDistance(t.lengthM)}
+                {'  ·  '}
+                {t.access === 'bike' ? (t.mtb ? 'Mountain bike' : 'Bikes OK') : t.access === 'no_bike' ? 'Hiking only' : 'Check signs for bikes'}
+                {t.surface ? `  ·  ${t.surface.replace(/_/g, ' ')}` : ''}
+              </Text>
+            </View>
+          </View>
+        ))}
+      <Text style={styles.source}>Map data: OpenStreetMap contributors · park rules: WI DNR</Text>
     </View>
   );
 }
@@ -271,6 +334,7 @@ export function selectionCenter(s: Selection, pathCoords?: [number, number][]): 
   if (s.type === 'partner') {
     return { latitude: s.item.latitude ?? 43.0731, longitude: s.item.longitude ?? -89.3844 };
   }
+  if (s.type === 'park') return { latitude: s.item.lat, longitude: s.item.lon };
   if (s.type === 'trail') {
     if (pathCoords?.length) {
       const c = pathCoords[Math.floor(pathCoords.length / 2)];
@@ -285,6 +349,7 @@ export function selectionCenter(s: Selection, pathCoords?: [number, number][]): 
 function kicker(s: Selection): string {
   if (s.type === 'station') return 'BCycle station';
   if (s.type === 'partner') return CATEGORY_LABEL[s.item.category] ?? 'Local business';
+  if (s.type === 'park') return /recreation area/i.test(s.item.name) ? 'State recreation area' : 'Wisconsin state park';
   if (s.type === 'place') return PLACE_META[s.item.kind].label;
   return s.item.kind === 'lane' ? 'Bike lane' : PATH_META[s.item.kind].label;
 }
@@ -292,6 +357,7 @@ function kicker(s: Selection): string {
 function title(s: Selection): string {
   if (s.type === 'station') return s.item.name;
   if (s.type === 'partner') return s.item.name;
+  if (s.type === 'park') return s.item.name;
   if (s.type === 'place') return s.item.name ?? PLACE_META[s.item.kind].fallbackName;
   return s.item.name ?? (s.item.kind === 'lane' ? 'Bike lane' : 'Unnamed path');
 }
@@ -321,6 +387,9 @@ const styles = StyleSheet.create({
   stats: { flexDirection: 'row', gap: 12 },
   statLabel: { fontSize: 12, color: COLORS.muted },
   statValue: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginTop: 2 },
+  sectionTitle: { fontSize: 14, fontWeight: '800', color: COLORS.text, marginTop: 4 },
+  parkTrail: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  parkTrailName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
   sponsor: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fffbeb', borderRadius: 12,
     paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#fde68a',

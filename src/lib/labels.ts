@@ -6,6 +6,8 @@ export const PLACE_META: Record<PlaceKind, { label: string; plural: string; colo
   repair: { label: 'Fix-it station', plural: 'Fix-it stations', color: COLORS.repair, icon: 'construct', fallbackName: 'Fix-it station' },
   parking: { label: 'Bike parking', plural: 'Bike parking', color: COLORS.parking, icon: 'lock-closed', fallbackName: 'Bike parking' },
   water: { label: 'Drinking water', plural: 'Water', color: COLORS.water, icon: 'water', fallbackName: 'Drinking water' },
+  food: { label: 'Food', plural: 'Restaurants', color: COLORS.food, icon: 'restaurant', fallbackName: 'Restaurant' },
+  drink: { label: 'Drinks', plural: 'Bars', color: COLORS.drink, icon: 'beer', fallbackName: 'Bar' },
 };
 
 export const PATH_META: Record<PathKind, { label: string; color: string }> = {

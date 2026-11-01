@@ -18,7 +18,7 @@ export interface BikePath {
   bbox: BBox;
 }
 
-export type PlaceKind = 'shop' | 'repair' | 'parking' | 'water';
+export type PlaceKind = 'shop' | 'repair' | 'parking' | 'water' | 'food' | 'drink';
 
 export interface Place {
   id: string; // 'osm:node:<id>' / 'osm:way:<id>'
@@ -72,6 +72,8 @@ export function placesQuery(bounds = COVERAGE_BBOX): string {
   nwr["amenity"="bicycle_repair_station"](${b});
   nwr["amenity"="bicycle_parking"](${b});
   node["amenity"="drinking_water"](${b});
+  nwr["amenity"~"^(restaurant|cafe|fast_food|ice_cream|bar|pub|biergarten)$"]["name"](${b});
+  nwr["craft"~"^(brewery|winery|distillery)$"]["name"](${b});
 );
 out tags center;`;
 }
@@ -136,6 +138,10 @@ function placeKind(tags: Record<string, string>): PlaceKind | null {
   if (tags.amenity === 'bicycle_repair_station') return 'repair';
   if (tags.amenity === 'bicycle_parking') return 'parking';
   if (tags.amenity === 'drinking_water') return 'water';
+  if (['bar', 'pub', 'biergarten'].includes(tags.amenity ?? '') || ['brewery', 'winery', 'distillery'].includes(tags.craft ?? '')) {
+    return 'drink';
+  }
+  if (['restaurant', 'cafe', 'fast_food', 'ice_cream'].includes(tags.amenity ?? '')) return 'food';
   return null;
 }
 
@@ -178,6 +184,17 @@ function details(kind: PlaceKind, t: Record<string, string>): string[] {
     if (t['service:bicycle:second_hand'] === 'yes') d.push('Used bikes');
   }
   if (kind === 'water' && t.seasonal === 'yes') d.push('Seasonal');
+  if (kind === 'food' || kind === 'drink') {
+    const type: Record<string, string> = {
+      restaurant: 'Restaurant', cafe: 'Café', fast_food: 'Quick bite', ice_cream: 'Ice cream',
+      bar: 'Bar', pub: 'Pub', biergarten: 'Beer garden',
+    };
+    const craft: Record<string, string> = { brewery: 'Brewery', winery: 'Winery', distillery: 'Distillery' };
+    const label = (t.craft && craft[t.craft]) || (t.amenity && type[t.amenity]);
+    if (label) d.push(label);
+    if (t.cuisine) d.push(t.cuisine.split(';').slice(0, 2).map((c) => c.replace(/_/g, ' ')).join(', '));
+    if (t.outdoor_seating === 'yes') d.push('Patio');
+  }
   return d;
 }
 
@@ -208,6 +225,11 @@ export function parsePlaces(json: { elements?: OverpassElement[] }): Place[] {
 }
 
 // ---------- fetching ----------
+
+/** Run an Overpass query against the public mirrors (first one that answers wins). */
+export async function overpassQuery(query: string): Promise<{ elements?: unknown[] }> {
+  return overpass(query);
+}
 
 async function overpass(query: string): Promise<{ elements?: OverpassElement[] }> {
   const errors: string[] = [];

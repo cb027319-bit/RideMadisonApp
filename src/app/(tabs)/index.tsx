@@ -14,23 +14,30 @@ import { useData, type Selection } from '@/lib/data';
 import { pointInBBox, regionToBBox, type Region } from '@/lib/geo';
 import { PLACE_META } from '@/lib/labels';
 import type { Place, PlaceKind } from '@/lib/osm';
+import { cached } from '@/lib/cache';
+import { fetchParkTrails, parkBBoxOf, type ParkTrail } from '@/lib/parks';
 import { sponsorForTrail, trackPartner } from '@/lib/partners';
 import { usePrefs } from '@/lib/prefs';
 import { useRoute } from '@/lib/route';
 import { closestPointOnTrail, nearestPath } from '@/lib/trails';
 import { describe, fetchWeather, type RideWeather } from '@/lib/weather';
 
-type LayerId = 'trails' | 'lanes' | 'bcycle' | PlaceKind;
+type LayerId = 'trails' | 'lanes' | 'parks' | 'bcycle' | PlaceKind;
 
 const LAYERS: { id: LayerId; label: string; color: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'trails', label: 'Trails', color: COLORS.pathPaved, icon: 'trail-sign' },
   { id: 'lanes', label: 'Bike lanes', color: COLORS.lane, icon: 'remove' },
+  { id: 'parks', label: 'State parks', color: COLORS.park, icon: 'leaf' },
   { id: 'bcycle', label: 'BCycle', color: COLORS.bcycle, icon: 'bicycle' },
   { id: 'shop', label: 'Shops', color: COLORS.shop, icon: 'storefront' },
   { id: 'repair', label: 'Fix-it', color: COLORS.repair, icon: 'construct' },
   { id: 'parking', label: 'Parking', color: COLORS.parking, icon: 'lock-closed' },
   { id: 'water', label: 'Water', color: COLORS.water, icon: 'water' },
+  { id: 'food', label: 'Food', color: COLORS.food, icon: 'restaurant' },
+  { id: 'drink', label: 'Drinks', color: COLORS.drink, icon: 'beer' },
 ];
+
+const DENSE_KINDS = new Set<PlaceKind>(['parking', 'water', 'food', 'drink']);
 
 /** Dense layers only appear once zoomed in, to keep the map about the trails. */
 const DENSE_MAX_LAT_DELTA = 0.04;
@@ -42,7 +49,7 @@ const HIGHLIGHT = '#facc15';
 
 export default function MapScreen() {
   const {
-    paths, trailOfPath, trailById, pathById, places, partners, stations, pathsState, placesState, stationsState,
+    paths, trailOfPath, trailById, pathById, places, partners, parks, stations, pathsState, placesState, stationsState,
     stationsUpdatedAt, offlineCopy, lastError, location, selection, select, focusRequest, refreshAll,
   } = useData();
   const { routeTo, requestSearch } = useRoute();
@@ -53,7 +60,7 @@ export default function MapScreen() {
   const [mapHeight, setMapHeight] = useState(700);
   const [region, setRegion] = useState<Region>(INITIAL_REGION);
   const [layers, setLayers] = useState<Record<LayerId, boolean>>({
-    trails: true, lanes: true, bcycle: true, shop: true, repair: true, parking: false, water: false,
+    trails: true, lanes: true, parks: true, bcycle: true, shop: true, repair: true, parking: false, water: false, food: false, drink: false,
   });
   const weather = useWeather(location);
 
@@ -67,6 +74,54 @@ export default function MapScreen() {
   const view = useMemo(() => regionToBBox(region, 0.3), [region]);
   const showDense = region.latitudeDelta <= DENSE_MAX_LAT_DELTA;
   const showStations = layers.bcycle && region.latitudeDelta <= STATIONS_MAX_LAT_DELTA;
+
+  // State parks: visible across the region (they're spread out), hidden only when very zoomed out.
+  const visibleParks = useMemo(
+    () => (layers.parks && region.latitudeDelta <= 1.2 ? parks.filter((p) => pointInBBox(p.lat, p.lon, regionToBBox(region, 0.5))) : []),
+    [parks, layers.parks, region],
+  );
+
+  const fitBBox = (b: { minLat: number; minLon: number; maxLat: number; maxLon: number }) => {
+    mapRef.current?.fitToCoordinates(
+      [
+        { latitude: b.minLat, longitude: b.minLon },
+        { latitude: b.maxLat, longitude: b.maxLon },
+      ],
+      { edgePadding: { top: 160, right: 40, bottom: 420, left: 40 }, animated: true },
+    );
+  };
+
+  // Trails inside the selected park, loaded on demand and cached on the phone.
+  const parkId = selection?.type === 'park' ? selection.item.id : null;
+  const [parkTrails, setParkTrails] = useState<{ parkId: string; state: 'ready' | 'error'; trails: ParkTrail[] } | null>(null);
+  const [parkRetry, setParkRetry] = useState(0);
+  useEffect(() => {
+    if (selection?.type !== 'park') return;
+    const park = selection.item;
+    let cancelled = false;
+    cached(`parktrails:v1:${park.id}`, 30 * 24 * 3600 * 1000, () => fetchParkTrails(park))
+      .then((r) => {
+        if (cancelled) return;
+        setParkTrails({ parkId: park.id, state: 'ready', trails: r.value });
+        const b = parkBBoxOf(park, r.value);
+        if (b && !park.bbox) fitBBox(b);
+      })
+      .catch(() => !cancelled && setParkTrails({ parkId: park.id, state: 'error', trails: [] }));
+    return () => {
+      cancelled = true;
+    };
+  }, [parkId, parkRetry]); // eslint-disable-line react-hooks/exhaustive-deps
+  const currentParkTrails =
+    parkId && parkTrails?.parkId === parkId
+      ? { state: parkTrails.state, trails: parkTrails.trails }
+      : parkId
+        ? { state: 'loading' as const, trails: [] }
+        : undefined;
+
+  const openPark = (p: (typeof parks)[number]) => {
+    select({ type: 'park', item: p });
+    if (p.bbox) fitBBox(p.bbox);
+  };
 
   // Paying partners: always shown (unless zoomed far out), as larger branded pins.
   const visiblePartners = useMemo(
@@ -100,7 +155,7 @@ export default function MapScreen() {
     for (const p of places) {
       if (!layers[p.kind]) continue;
       if (partnerPlaceIds.has(p.id)) continue; // shown as a partner pin instead
-      const isDense = p.kind === 'parking' || p.kind === 'water';
+      const isDense = DENSE_KINDS.has(p.kind);
       if (isDense && (!showDense || dense >= MAX_DENSE_MARKERS)) continue;
       if (!pointInBBox(p.lat, p.lon, view)) continue;
       if (isDense) dense += 1;
@@ -118,7 +173,7 @@ export default function MapScreen() {
   }, [selection, pathById]);
 
   // Let custom pins draw before freezing them as images (blank pins on some Android devices otherwise).
-  const pinsKey = `${visiblePlaces.length}:${visibleStations.length}:${visiblePartners.length}:${stationsUpdatedAt ?? 0}`;
+  const pinsKey = `${visiblePlaces.length}:${visibleStations.length}:${visiblePartners.length}:${visibleParks.length}:${stationsUpdatedAt ?? 0}`;
   const [settledPinsKey, setSettledPinsKey] = useState('');
   const trackPins = settledPinsKey !== pinsKey;
   useEffect(() => {
@@ -161,8 +216,8 @@ export default function MapScreen() {
   const status = statusMessage({ pathsState, placesState, stationsState, offlineCopy });
   const zoomHint = !status && layers.bcycle && !showStations
     ? 'Zoom in to see BCycle stations'
-    : !status && !showDense && (layers.parking || layers.water)
-      ? 'Zoom in to see parking and water'
+    : !status && !showDense && (layers.parking || layers.water || layers.food || layers.drink)
+      ? 'Zoom in to see these places'
       : null;
 
   return (
@@ -188,6 +243,34 @@ export default function MapScreen() {
             lineCap="round"
             zIndex={0}
           />
+        ))}
+
+        {currentParkTrails?.trails.flatMap((t) =>
+          t.lines.map((line, i) => (
+            <Polyline
+              key={`pt:${t.name}:${i}`}
+              coordinates={line.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))}
+              strokeColor={t.access === 'bike' ? '#15803d' : t.access === 'no_bike' ? '#a16207' : '#6b7280'}
+              strokeWidth={3}
+              lineDashPattern={t.access === 'bike' ? undefined : [5, 4]}
+              zIndex={3}
+            />
+          )),
+        )}
+
+        {visibleParks.map((p) => (
+          <Marker
+            key={p.id}
+            coordinate={{ latitude: p.lat, longitude: p.lon }}
+            onPress={() => openPark(p)}
+            tracksViewChanges={trackPins}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={15}
+            accessibilityLabel={p.name}>
+            <View style={styles.parkPin}>
+              <Ionicons name="leaf" size={14} color="#fff" />
+            </View>
+          </Marker>
         ))}
 
         {visiblePlaces.map((p) => (
@@ -322,6 +405,8 @@ export default function MapScreen() {
             isEbikeRider={prefs?.bike === 'ebike'}
             sponsor={selection.type === 'trail' ? sponsorForTrail(partners, selection.item.name) : undefined}
             onOpenPartner={(p) => select({ type: 'partner', item: p })}
+            parkTrails={currentParkTrails}
+            onRetryParkTrails={() => setParkRetry((n) => n + 1)}
             onClose={() => select(null)}
             onRouteHere={(label) => {
               routeTo(targetFor(selection), label);
@@ -439,6 +524,10 @@ const styles = StyleSheet.create({
   pin: {
     width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#fff',
+  },
+  parkPin: {
+    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.park, borderWidth: 2, borderColor: '#fff',
   },
   partnerPin: {
     padding: 3, borderRadius: 20, backgroundColor: '#f59e0b',

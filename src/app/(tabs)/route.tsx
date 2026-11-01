@@ -9,6 +9,7 @@ import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PathLines } from '@/components/path-lines';
+import { SuggestedRidesSheet } from '@/components/suggested-rides';
 import { COLORS, INITIAL_REGION } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/data';
@@ -34,6 +35,7 @@ export default function RouteScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [showSaved, setShowSaved] = useState(false);
   const [showSave, setShowSave] = useState(false);
+  const [showIdeas, setShowIdeas] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
 
   // Debounced place search.
@@ -239,6 +241,17 @@ export default function RouteScreen() {
           )}
         </Pressable>
 
+        {route.stops.length === 0 && (
+          <Pressable style={styles.ideas} onPress={() => setShowIdeas(true)} accessibilityRole="button">
+            <Ionicons name="compass" size={22} color="#fff" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ideasTitle}>Browse suggested rides</Text>
+              <Text style={styles.ideasSub}>Filter by length, paved trail, gravel or road, and distance from you</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#fff" />
+          </Pressable>
+        )}
+
         {panelOpen && (
           <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
             {/* Stops */}
@@ -307,6 +320,7 @@ export default function RouteScreen() {
                   <Action icon="share-outline" label="GPX" onPress={() => void shareGpx()} />
                 </>
               )}
+              <Action icon="compass-outline" label="Suggested rides" onPress={() => setShowIdeas(true)} />
               <Action icon="folder-open-outline" label={`Saved (${route.savedRides.length})`} onPress={() => setShowSaved(true)} />
               {route.stops.length > 0 && <Action icon="trash-outline" label="Clear" onPress={route.clear} />}
             </View>
@@ -330,6 +344,21 @@ export default function RouteScreen() {
           } catch (e) {
             Alert.alert('Not saved', e instanceof Error ? e.message : 'Please try again.');
           }
+        }}
+      />
+      <SuggestedRidesSheet
+        visible={showIdeas}
+        location={location}
+        onClose={() => setShowIdeas(false)}
+        onPick={(ride, result) => {
+          route.loadPlan({
+            stops: ride.points.map(({ label, latitude, longitude }) => ({ label, latitude, longitude })),
+            profile: ride.profile,
+            roundTrip: true,
+            result,
+          });
+          setShowIdeas(false);
+          setPanelOpen(true);
         }}
       />
       <SavedRidesModal
@@ -520,6 +549,12 @@ const styles = StyleSheet.create({
   handleArea: { paddingTop: 8, paddingBottom: 10, alignItems: 'center', gap: 8 },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' },
   summary: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  ideas: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: ROUTE_COLOR, borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
+  },
+  ideasTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  ideasSub: { color: '#ede9fe', fontSize: 12, marginTop: 2 },
   mix: { alignSelf: 'stretch', gap: 4 },
   mixBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#e5e7eb' },
   mixText: { fontSize: 12, color: COLORS.muted, textAlign: 'center' },

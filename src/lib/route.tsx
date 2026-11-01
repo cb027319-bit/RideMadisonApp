@@ -60,6 +60,8 @@ interface RouteState {
   retry: () => void;
   saveRide: (name: string) => Promise<void>;
   loadRide: (ride: SavedRide) => void;
+  /** Load a suggested ride (or any plan) into the planner. */
+  loadPlan: (plan: { stops: Omit<Stop, 'id'>[]; profile: RouteProfile; roundTrip: boolean; result?: RouteResult }) => void;
   deleteRide: (id: string) => Promise<void>;
 }
 
@@ -275,6 +277,18 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     setFocusRequest((n) => n + 1);
   }, []);
 
+  const loadPlan = useCallback(
+    (plan: { stops: Omit<Stop, 'id'>[]; profile: RouteProfile; roundTrip: boolean; result?: RouteResult }) => {
+      setStartFromMe(false);
+      setProfile(plan.profile);
+      setRoundTrip(plan.roundTrip);
+      setStops(plan.stops.map((s) => ({ ...s, id: newId() })));
+      setResult(plan.result ?? null);
+      setFocusRequest((n) => n + 1);
+    },
+    [],
+  );
+
   const deleteRide = useCallback(
     async (id: string) => {
       if (accounts && supabase && userId) {
@@ -294,10 +308,10 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     () => ({
       stops, startFromMe, usingMyLocation, profile, roundTrip, result, status, error, waypoints, savedRides,
       focusRequest, searchRequest, requestSearch, addStop, routeTo, moveStop, removeStop, shiftStop, setStartFromMe, setProfile, setRoundTrip,
-      clear, retry, saveRide, loadRide, deleteRide,
+      clear, retry, saveRide, loadRide, loadPlan, deleteRide,
     }),
     [stops, startFromMe, usingMyLocation, profile, roundTrip, result, status, error, waypoints, savedRides,
-      focusRequest, searchRequest, requestSearch, addStop, routeTo, moveStop, removeStop, shiftStop, clear, retry, saveRide, loadRide, deleteRide],
+      focusRequest, searchRequest, requestSearch, addStop, routeTo, moveStop, removeStop, shiftStop, clear, retry, saveRide, loadRide, loadPlan, deleteRide],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

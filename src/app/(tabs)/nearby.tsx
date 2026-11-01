@@ -8,25 +8,30 @@ import { useData, type Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { PLACE_META, timeAgo } from '@/lib/labels';
 
-type Tab = 'bcycle' | 'shop' | 'repair';
+type Tab = 'bcycle' | 'shop' | 'repair' | 'food' | 'drink';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'bcycle', label: 'BCycle' },
-  { id: 'shop', label: 'Bike shops' },
+  { id: 'shop', label: 'Shops' },
   { id: 'repair', label: 'Fix-it' },
+  { id: 'food', label: 'Eat' },
+  { id: 'drink', label: 'Drink' },
 ];
+
+/** Which partner categories appear at the top of each tab. */
+const PARTNER_TAB: Record<string, Tab> = { shop: 'shop', food: 'food', drink: 'drink' };
 
 interface Row {
   key: string;
   title: string;
   subtitle: string;
   meters: number;
-  badge?: { text: string; muted: boolean };
+  badge?: { text: string; muted: boolean; partner?: boolean };
   selection: Selection;
 }
 
 export default function NearbyScreen() {
-  const { stations, places, location, locationDenied, stationsUpdatedAt, refreshStations, focus } = useData();
+  const { stations, places, partners, location, locationDenied, stationsUpdatedAt, refreshStations, focus } = useData();
   const [tab, setTab] = useState<Tab>('bcycle');
   const [refreshing, setRefreshing] = useState(false);
   const origin = location ?? MADISON_CENTER;
@@ -44,8 +49,9 @@ export default function NearbyScreen() {
         selection: { type: 'station', item: s },
       }));
     } else {
+      const hidden = new Set(partners.map((p) => p.osm_place_id).filter(Boolean));
       list = places
-        .filter((p) => p.kind === tab)
+        .filter((p) => p.kind === tab && !hidden.has(p.id))
         .map((p) => ({
           key: p.id,
           title: p.name ?? PLACE_META[p.kind].fallbackName,
@@ -54,8 +60,22 @@ export default function NearbyScreen() {
           selection: { type: 'place', item: p },
         }));
     }
-    return list.sort((a, b) => a.meters - b.meters).slice(0, 100);
-  }, [tab, stations, places, origin.latitude, origin.longitude]);
+    const sorted = list.sort((a, b) => a.meters - b.meters).slice(0, 100);
+    // Paying partners for this category are pinned to the top, clearly labeled.
+    const featured: Row[] = partners
+      .filter((p) => PARTNER_TAB[p.category] === tab && p.latitude != null && p.longitude != null)
+      .map((p) => ({
+        key: `partner:${p.id}`,
+        title: p.name,
+        subtitle: p.offer ?? p.blurb ?? p.address ?? '',
+        meters: dist(p.latitude!, p.longitude!),
+        badge: { text: p.demo ? 'Partner · sample' : 'Partner', muted: false, partner: true },
+        selection: { type: 'partner' as const, item: p },
+      }))
+      .sort((a, b) => a.meters - b.meters)
+      .slice(0, 3);
+    return [...featured, ...sorted];
+  }, [tab, stations, places, partners, origin.latitude, origin.longitude]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -102,7 +122,9 @@ export default function NearbyScreen() {
             </View>
             <View style={styles.right}>
               {item.badge && (
-                <Text style={[styles.badge, item.badge.muted && styles.badgeMuted]}>{item.badge.text}</Text>
+                <Text style={[styles.badge, item.badge.muted && styles.badgeMuted, item.badge.partner && styles.badgePartner]}>
+                  {item.badge.text}
+                </Text>
               )}
               <Text style={styles.distance}>{formatDistance(item.meters)}</Text>
             </View>
@@ -119,7 +141,7 @@ const styles = StyleSheet.create({
   segment: { flexDirection: 'row', margin: 12, backgroundColor: '#f3f4f6', borderRadius: 10, padding: 3 },
   segmentItem: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   segmentActive: { backgroundColor: COLORS.bg, elevation: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 2 },
-  segmentText: { fontSize: 14, fontWeight: '600', color: COLORS.muted },
+  segmentText: { fontSize: 13, fontWeight: '600', color: COLORS.muted },
   segmentTextActive: { color: COLORS.text },
   note: { fontSize: 13, color: COLORS.muted, paddingHorizontal: 16, paddingBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
@@ -131,6 +153,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: 'hidden',
   },
   badgeMuted: { backgroundColor: '#9ca3af' },
+  badgePartner: { backgroundColor: '#f59e0b' },
   distance: { fontSize: 13, color: COLORS.text, fontWeight: '500' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border, marginLeft: 16 },
   empty: { textAlign: 'center', color: COLORS.muted, padding: 32 },
