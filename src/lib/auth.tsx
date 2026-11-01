@@ -7,11 +7,11 @@ import type { Session } from '@supabase/supabase-js';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
 import { friendlyAuthError, type AuthStep } from './auth-errors';
-import { t } from './i18n';
+import { lang, t } from './i18n';
 import { accountsConfigured, fetchEnabledProviders, supabase, type Profile } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -123,6 +123,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [userId]);
+
+  // Welcome email: once the rider is signed in and has finished (or skipped) the
+  // profile step, ask the server to send the branded welcome email. The server sends
+  // it at most once per account (profiles.welcomed_at), so this is safe to repeat.
+  const welcomeAsked = useRef(false);
+  useEffect(() => {
+    if (!supabase || !profile || sheet || welcomeAsked.current) return;
+    // Only when migration 0006 is in (column present) and the welcome hasn't gone out.
+    if (!('welcomed_at' in profile) || profile.welcomed_at) return;
+    welcomeAsked.current = true;
+    supabase.functions
+      .invoke('welcome-email', { body: { lang: lang() } })
+      .then(({ data }) => {
+        if ((data as { sent?: boolean } | null)?.sent) {
+          setProfile((p) => (p ? { ...p, welcomed_at: new Date().toISOString() } : p));
+        }
+      })
+      .catch(() => {
+        // Not deployed yet or offline: try again next app launch.
+      });
+  }, [profile, sheet]);
 
   const markWelcome = useCallback(() => {
     setWelcomeHandled(true);

@@ -53,4 +53,7 @@ export interface Profile {
   bike_type: string | null;
   comfort: string | null;
   signup_method: string | null;
+  /** Set once the welcome email has gone out (migration 0006). Undefined before 0006 is run. */
+  welcomed_at?: string | null;
+  language?: 'en' | 'es' | null;
 }

@@ -103,3 +103,10 @@ Update the app and run this migration together: older builds insert into `partne
 events will be refused once 0004 is in.
 
 Sign in with Apple token revocation on account deletion is still to do: see `supabase/functions/revoke-apple/README.md`.
+
+## Email + password sign-up and welcome email (0006)
+
+1. Authentication → Sign In / Providers → Email: turn **off** "Confirm email" so new accounts sign in right away.
+2. Authentication → Emails → Reset Password: make the email show the 6-digit code with `{{ .Token }}` (the app asks for the code when someone forgets their password).
+3. Run `supabase/migrations/0006_welcome_email.sql`.
+4. Deploy the welcome email: see `supabase/functions/welcome-email/README.md`.
