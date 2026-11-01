@@ -62,3 +62,23 @@ test('closest distance uses route points when measured', () => {
   const mi = closestMiles({ latitude: 43.0717, longitude: -89.3808 }, ride);
   assert.ok(mi < 0.01);
 });
+
+test('family friendly filter and quiet-street labels', async () => {
+  const { isFamilyFriendly, rideTypeLabel } = await import('../src/lib/suggested');
+  const arb = SUGGESTED_RIDES.find((r) => r.id === 'arboretum-wingra')!;
+  const monona = SUGGESTED_RIDES.find((r) => r.id === 'monona-loop')!;
+  // Unmeasured: the hand-checked kids' ride counts; a road ride doesn't.
+  assert.equal(isFamilyFriendly({ ride: arb }), true);
+  assert.equal(isFamilyFriendly({ ride: monona }), false);
+  // Measured: road share decides.
+  const calm = result(8, { path: 0.4, quiet: 0.55, road: 0.05 });
+  const busy = result(8, { path: 0.4, quiet: 0.3, road: 0.3 });
+  assert.equal(isFamilyFriendly({ ride: monona, result: calm }), true);
+  assert.equal(isFamilyFriendly({ ride: arb, result: busy }), false);
+  assert.deepEqual(filterRides([{ ride: arb, result: calm, fromMeMi: 1 }], { length: 'any', type: 'family', fromMe: 'any' }).length, 1);
+  // The Arboretum loop (measured "road" on quiet park roads) isn't hidden by the Paved trail filter.
+  assert.equal(filterRides([{ ride: arb, result: calm, fromMeMi: 1 }], { length: 'any', type: 'trail', fromMe: 'any' }).length, 1);
+  assert.equal(rideTypeLabel('road', calm.breakdown), 'Mostly quiet streets');
+  assert.equal(rideTypeLabel('road', busy.breakdown), 'Roads & bike lanes');
+  assert.equal(rideTypeLabel('trail', calm.breakdown), 'Paved trail');
+});

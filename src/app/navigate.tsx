@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import * as Speech from 'expo-speech';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { AnimatedRegion, MarkerAnimated, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,11 +20,11 @@ import { BRAND, COLORS, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import {
-  bearingAt, buildLine, detectManeuvers, instruction, nextManeuver, pointAt, project, shortDistance, voicePrompt,
+  bearingAt, buildLine, buildManeuvers, instruction, nextManeuver, pointAt, project, reachedStop, shortDistance, voicePrompt,
   type Maneuver, type RouteLine,
 } from '@/lib/navigation';
 import { useRoute } from '@/lib/route';
-import { fetchRoute, formatDuration, type LatLon } from '@/lib/routing';
+import { fetchRoute, formatDuration, type LatLon, type RouteResult } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
 
@@ -39,11 +39,18 @@ const AnimatedMarker = MarkerAnimated as unknown as React.ComponentType<{
   children: React.ReactNode;
 }>;
 const OFF_ROUTE_M = 35;
+/** No "Rerouting" voice while GPS settles at the start of a ride. */
+const QUIET_START_MS = 20000;
+const QUIET_START_FIXES = 5;
+/** Farther than this from the route's start on the first fixes: route to the start first. */
+const APPROACH_M = 200;
+
+type NavPoint = LatLon & { label?: string };
 
 interface NavRoute {
   line: RouteLine;
   maneuvers: Maneuver[];
-  waypoints: LatLon[];
+  waypoints: NavPoint[];
   waypointAlong: number[];
   timeS: number;
 }
@@ -66,23 +73,23 @@ export default function NavigateScreen() {
   const rideLog = useRideLog();
   const mapRef = useRef<MapView>(null);
 
-  const build = (coords: LatLon[], waypoints: LatLon[], timeS: number): NavRoute => {
-    const line = buildLine(coords);
-    const maneuvers = detectManeuvers(line).map((m) =>
-      m.type === 'arrive' ? m : { ...m, onto: nameAt(paths, pointAt(line, m.at + 30)) },
-    );
-    return { line, maneuvers, waypoints, waypointAlong: alongOfWaypoints(line, waypoints), timeS };
+  const build = (result: RouteResult, waypoints: NavPoint[]): NavRoute => {
+    const line = buildLine(result.coords);
+    const maneuvers = buildManeuvers(line, result, (p) => nameAt(paths, p));
+    return { line, maneuvers, waypoints, waypointAlong: alongOfWaypoints(line, waypoints), timeS: result.timeS };
   };
 
-  const [nav, setNav] = useState<NavRoute | null>(() =>
-    trip ? build(trip.result.coords, trip.points, trip.result.timeS) : null,
-  );
+  const [nav, setNav] = useState<NavRoute | null>(() => (trip ? build(trip.result, trip.points) : null));
   const [along, setAlong] = useState(0);
   const [snapped, setSnapped] = useState<LatLon | null>(null);
   const [hasFix, setHasFix] = useState(false);
   const [following, setFollowing] = useState(true);
   const [muted, setMuted] = useState(false);
-  const [rerouting, setRerouting] = useState(false);
+  const [rerouting, setRerouting] = useState<false | 'reroute' | 'approach'>(false);
+  const [rerouteFailed, setRerouteFailed] = useState(false);
+  const [reachedLabel, setReachedLabel] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
   const [arrived, setArrived] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -121,6 +128,9 @@ export default function NavigateScreen() {
   const mutedRef = useRef(false);
   const reroutingRef = useRef(false);
   const arrivedRef = useRef(false);
+  const fixCount = useRef(0);
+  const approached = useRef(false);
+  const reached = useRef(new Set<number>());
   useEffect(() => {
     navRef.current = nav;
   }, [nav]);
@@ -137,25 +147,32 @@ export default function NavigateScreen() {
     Speech.speak(text, { language: 'en-US', rate: 1.0 });
   };
 
-  const reroute = async (pos: LatLon) => {
+  /** New route from here. `approach`: the rider is away from the start, so ride to it first. */
+  const reroute = async (pos: LatLon, approach = false) => {
     const current = navRef.current;
     if (!current || reroutingRef.current || !trip) return;
     reroutingRef.current = true;
-    setRerouting(true);
-    say('Rerouting');
+    setRerouting(approach ? 'approach' : 'reroute');
+    const settling = Date.now() - startedAt < QUIET_START_MS || fixCount.current <= QUIET_START_FIXES;
+    if (!approach && !settling) say('Rerouting');
     try {
-      const remaining = current.waypoints.filter((_, i) => current.waypointAlong[i] > alongRef.current + 25);
+      const remaining = approach
+        ? current.waypoints
+        : current.waypoints.filter((_, i) => current.waypointAlong[i] > alongRef.current + 25);
       const targets = remaining.length ? remaining : [current.waypoints[current.waypoints.length - 1]];
       const r = await fetchRoute([pos, ...targets], trip.profile);
-      const next = build(r.coords, [pos, ...targets], r.timeS);
+      const next = build(r, [{ ...pos, label: 'My location' }, ...targets]);
       spoken.current = new Set();
+      reached.current = new Set();
       alongRef.current = 0;
       offCount.current = 0;
       setNav(next);
       setAlong(0);
+      setRerouteFailed(false);
     } catch {
       // Keep the old route; try again after a few more off-route fixes.
       offCount.current = 0;
+      setRerouteFailed(true);
     } finally {
       reroutingRef.current = false;
       setRerouting(false);
@@ -166,6 +183,7 @@ export default function NavigateScreen() {
     const current = navRef.current;
     if (!current || arrivedRef.current) return;
     setHasFix(true);
+    fixCount.current += 1;
 
     if (lastPos.current) {
       const d = distanceMeters(lastPos.current.latitude, lastPos.current.longitude, pos.latitude, pos.longitude);
@@ -175,8 +193,19 @@ export default function NavigateScreen() {
     recorder.current = addFix(recorder.current, pos.latitude, pos.longitude, Date.now(), speed);
 
     const p = project(current.line, pos, alongRef.current);
+    // Starting away from the ride (e.g. a suggested ride across town): head to its start first.
+    const start = current.line.coords[0];
+    if (
+      !approached.current && fixCount.current <= QUIET_START_FIXES && p.offRoute > OFF_ROUTE_M && p.along < 50 &&
+      distanceMeters(pos.latitude, pos.longitude, start.latitude, start.longitude) > APPROACH_M
+    ) {
+      approached.current = true;
+      void reroute(pos, true);
+    }
+    if (fixCount.current > QUIET_START_FIXES) approached.current = true;
     offCount.current = p.offRoute > OFF_ROUTE_M ? offCount.current + 1 : 0;
     if (offCount.current >= 3) void reroute(pos);
+    if (p.offRoute <= OFF_ROUTE_M) setRerouteFailed(false);
 
     alongRef.current = p.along;
     if (p.offRoute <= OFF_ROUTE_M) maxAlong.current = Math.max(maxAlong.current, p.along);
@@ -194,6 +223,16 @@ export default function NavigateScreen() {
     }
 
     const { current: m } = nextManeuver(current.maneuvers, p.along);
+    if (p.offRoute <= OFF_ROUTE_M) {
+      const stop = reachedStop(current.waypointAlong, p.along, current.line.total, reached.current);
+      if (stop != null) {
+        const label = current.waypoints[stop]?.label;
+        const name = label && label !== 'Dropped pin' ? label : 'your stop';
+        say(`You've reached ${name}`);
+        setReachedLabel(name);
+        setTimeout(() => setReachedLabel(null), 6000);
+      }
+    }
     if (m && p.offRoute <= OFF_ROUTE_M) {
       const prompt = voicePrompt(m, m.at - p.along, spoken.current);
       if (prompt) say(prompt);
@@ -254,10 +293,38 @@ export default function NavigateScreen() {
   // Stop talking when leaving.
   useEffect(() => () => void Speech.stop(), []);
 
-  // Arrival announcement.
+  // Arrival announcement (the only place arrival is spoken).
   useEffect(() => {
-    if (arrived && !mutedRef.current) Speech.speak('You have arrived. Nice ride!', { language: 'en-US' });
+    if (!arrived || mutedRef.current) return;
+    Speech.stop();
+    Speech.speak('You have arrived. Nice ride!', { language: 'en-US' });
   }, [arrived]);
+
+  // Save tapped while signed out: carry on once signed in.
+  const saveRideNow = () => {
+    if (!trip) return;
+    setSaving(true);
+    route
+      .saveRide(trip.title)
+      .then((r) => {
+        if (r) Alert.alert('Saved to your rides', 'Find it under Route, then Saved.');
+        else Alert.alert('Not saved', 'Plan the ride in the Route tab to save it.');
+      })
+      .catch(() => Alert.alert('Not saved', 'Check your connection and try again.'))
+      .finally(() => setSaving(false));
+  };
+  const saveRef = useRef(saveRideNow);
+  useEffect(() => {
+    saveRef.current = saveRideNow;
+  });
+  useEffect(() => {
+    if (!pendingSave || auth.sheet) return;
+    const t = setTimeout(() => {
+      setPendingSave(false);
+      if (auth.session) saveRef.current();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [pendingSave, auth.sheet, auth.session]);
 
   const split = useMemo(() => {
     if (!nav) return { done: [], todo: [] };
@@ -310,7 +377,7 @@ export default function NavigateScreen() {
     return (
       <SafeAreaView style={styles.empty}>
         <Text style={styles.emptyText}>Plan a route first, then tap Start.</Text>
-        <Pressable style={styles.primary} onPress={() => router.back()}>
+        <Pressable style={styles.primary} onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.primaryText}>Back</Text>
         </Pressable>
       </SafeAreaView>
@@ -339,6 +406,12 @@ export default function NavigateScreen() {
     });
     router.back();
   };
+  const confirmEnd = () => {
+    Alert.alert('End ride?', 'Turn-by-turn directions will stop.', [
+      { text: 'Keep riding', style: 'cancel' },
+      { text: 'End ride', style: 'destructive', onPress: end },
+    ]);
+  };
 
   return (
     <View style={styles.container}>
@@ -363,13 +436,22 @@ export default function NavigateScreen() {
       {/* Turn banner */}
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         {permissionDenied ? (
-          <View style={[styles.banner, { backgroundColor: '#b91c1c' }]}>
-            <Text style={styles.bannerMain}>Location is off</Text>
+          <View style={[styles.banner, { backgroundColor: '#b91c1c' }]} accessibilityLiveRegion="polite">
+            <Text style={styles.bannerMain} accessibilityRole="header">Location is off</Text>
             <Text style={styles.bannerSub}>Allow location for Ride Madison in Settings to navigate.</Text>
+            <Pressable onPress={() => void Linking.openSettings()} style={styles.bannerBtn} accessibilityRole="button">
+              <Text style={styles.bannerBtnText}>Open Settings</Text>
+            </Pressable>
           </View>
         ) : rerouting ? (
-          <View style={[styles.banner, { backgroundColor: '#c2410c' }]}>
-            <Text style={styles.bannerMain}>Rerouting…</Text>
+          <View style={[styles.banner, styles.bannerRow, { backgroundColor: rerouting === 'approach' ? BRAND.navy : '#c2410c' }]} accessibilityLiveRegion="polite">
+            <ActivityIndicator color="#fff" />
+            <Text style={styles.bannerMain}>{rerouting === 'approach' ? 'Getting you to the start…' : 'Rerouting…'}</Text>
+          </View>
+        ) : rerouteFailed ? (
+          <View style={[styles.banner, { backgroundColor: '#c2410c' }]} accessibilityLiveRegion="polite">
+            <Text style={styles.bannerMain}>Couldn’t get a new route</Text>
+            <Text style={styles.bannerSub}>Head back to the red line. We’ll keep trying.</Text>
           </View>
         ) : !hasFix ? (
           <View style={styles.banner}>
@@ -391,46 +473,60 @@ export default function NavigateScreen() {
               <View style={styles.thenRow}>
                 <Text style={styles.thenText}>Then</Text>
                 <ManeuverIcon type={then.type} size={18} color="#fff" />
-                <Text style={styles.thenText} numberOfLines={1}>{instruction(then)}</Text>
+                <Text style={styles.thenText} numberOfLines={2}>{instruction(then)}</Text>
               </View>
             )}
           </View>
         ) : null}
+        {reachedLabel && (
+          <View style={styles.reached} accessibilityLiveRegion="polite">
+            <Ionicons name="flag" size={16} color={BRAND.navy} />
+            <Text style={styles.reachedText}>You’ve reached {reachedLabel}</Text>
+          </View>
+        )}
       </SafeAreaView>
 
       {/* Bottom controls */}
       <SafeAreaView edges={['bottom']} style={styles.bottomWrap} pointerEvents="box-none">
         {!following && (
-          <Pressable style={styles.recenter} onPress={recenter} accessibilityRole="button">
+          <Pressable style={styles.recenter} onPress={recenter} accessibilityRole="button" accessibilityLabel="Recenter on my position">
             <Ionicons name="navigate" size={18} color={BRAND.navy} />
             <Text style={styles.recenterText}>Recenter</Text>
           </Pressable>
         )}
         <View style={styles.bottom}>
-          <Pressable style={styles.endBtn} onPress={end} accessibilityLabel="End navigation" accessibilityRole="button">
-            <Ionicons name="close" size={26} color="#fff" />
+          <Pressable style={styles.ctl} onPress={confirmEnd} accessibilityLabel="End ride" accessibilityRole="button">
+            <View style={styles.endBtn}>
+              <Ionicons name="close" size={26} color="#fff" />
+            </View>
+            <Text style={styles.ctlText}>End</Text>
           </Pressable>
-          <View style={{ flex: 1, alignItems: 'center' }}>
+          <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityLabel={`${formatDuration(timeLeft)} left, ${formatDistance(remaining)}, arrive ${eta}`}>
             <Text style={styles.timeLeft}>{formatDuration(timeLeft)}</Text>
             <Text style={styles.remaining}>{formatDistance(remaining)}  ·  arrive {eta}</Text>
           </View>
-          <View style={{ gap: 8 }}>
-            <Pressable
-              style={styles.iconBtn}
-              onPress={() => {
-                if (!muted) Speech.stop();
-                setMuted(!muted);
-              }}
-              accessibilityLabel={muted ? 'Turn voice on' : 'Mute voice'}>
-              <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={20} color={COLORS.text} />
-            </Pressable>
-            <Pressable style={styles.iconBtn} onPress={overview} accessibilityLabel="Show whole route">
-              <Ionicons name="map-outline" size={20} color={COLORS.text} />
-            </Pressable>
-          </View>
+          <Pressable
+            style={styles.ctl}
+            onPress={() => {
+              if (!muted) Speech.stop();
+              setMuted(!muted);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={muted ? 'Turn voice on' : 'Mute voice'}>
+            <View style={styles.iconBtn}>
+              <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={22} color={COLORS.text} />
+            </View>
+            <Text style={styles.ctlText}>{muted ? 'Muted' : 'Voice'}</Text>
+          </Pressable>
+          <Pressable style={styles.ctl} onPress={overview} accessibilityRole="button" accessibilityLabel="Show whole route">
+            <View style={styles.iconBtn}>
+              <Ionicons name="map-outline" size={22} color={COLORS.text} />
+            </View>
+            <Text style={styles.ctlText}>Overview</Text>
+          </Pressable>
         </View>
         {__DEV__ && (
-          <Pressable onPress={() => setSimulating((s) => !s)} style={styles.simBtn}>
+          <Pressable onPress={() => setSimulating((s) => !s)} style={styles.simBtn} accessibilityRole="button">
             <Text style={styles.simText}>{simulating ? 'Stop simulated ride' : 'Simulate ride (testing)'}</Text>
           </Pressable>
         )}
@@ -457,18 +553,28 @@ export default function NavigateScreen() {
               </View>
             )}
             <Text style={styles.arrivedSub}>{trip.title}</Text>
-            <Pressable
-              style={styles.primary}
-              onPress={() => {
-                if (!auth.requireAccount('Create a free account to save this ride.')) return;
-                route
-                  .saveRide(trip.title)
-                  .then(() => Alert.alert('Saved', 'Find it under Route → Saved.'))
-                  .catch(() => Alert.alert('Not saved', 'Plan the ride in the Route tab to save it.'));
-              }}>
-              <Text style={styles.primaryText}>Save ride</Text>
-            </Pressable>
-            <Pressable onPress={end} style={{ padding: 10 }}>
+            {route.savedId ? (
+              <View style={[styles.primary, styles.savedPill]} accessible accessibilityLabel="Already in your saved rides">
+                <Ionicons name="bookmark" size={18} color={BRAND.navy} />
+                <Text style={[styles.primaryText, { color: BRAND.navy }]}>In your saved rides</Text>
+              </View>
+            ) : (
+              <Pressable
+                style={[styles.primary, saving && { opacity: 0.7 }]}
+                disabled={saving}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: saving, busy: saving }}
+                onPress={() => {
+                  if (!auth.requireAccount('Create a free account to save this ride.')) {
+                    setPendingSave(true);
+                    return;
+                  }
+                  saveRideNow();
+                }}>
+                <Text style={styles.primaryText}>{saving ? 'Saving…' : 'Save ride'}</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={end} style={styles.doneBtn} accessibilityRole="button">
               <Text style={styles.done}>Done</Text>
             </Pressable>
           </View>
@@ -491,7 +597,14 @@ const styles = StyleSheet.create({
   turnDistance: { color: '#fff', fontSize: 36, fontFamily: FONT.black },
   turnText: { color: '#fff', fontSize: 19, fontFamily: FONT.bold, marginTop: 2 },
   bannerMain: { color: '#fff', fontSize: 22, fontFamily: FONT.black },
-  bannerSub: { color: BRAND.limestone, fontSize: 14, marginTop: 4 },
+  bannerSub: { color: BRAND.limestone, fontSize: 15, marginTop: 4 },
+  bannerBtn: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
+  bannerBtnText: { color: BRAND.navy, fontSize: 15, fontFamily: FONT.black },
+  reached: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', marginTop: 8, backgroundColor: BRAND.gold,
+    borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, ...shadow,
+  },
+  reachedText: { color: BRAND.navy, fontSize: 16, fontFamily: FONT.black },
   thenRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.3)',
@@ -499,20 +612,22 @@ const styles = StyleSheet.create({
   thenText: { color: BRAND.limestone, fontSize: 15, fontFamily: FONT.bold, flexShrink: 1 },
   bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10 },
   bottom: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 22,
-    padding: 14, marginBottom: 6, ...shadow,
+    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 22,
+    padding: 12, marginBottom: 6, ...shadow,
   },
-  endBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
+  ctl: { alignItems: 'center', gap: 2, minWidth: 48 },
+  ctlText: { fontSize: 13, fontFamily: FONT.bold, color: COLORS.muted },
+  endBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
   timeLeft: { fontSize: 30, fontFamily: FONT.black, color: BRAND.navy },
   remaining: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
   recenter: {
     alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff',
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, marginBottom: 10, ...shadow,
   },
   recenterText: { color: BRAND.navy, fontFamily: FONT.bold, fontSize: 15 },
   simBtn: { alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.75)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, marginBottom: 4 },
-  simText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  simText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   arrivedWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
   arrivedCard: { backgroundColor: '#fff', borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
   arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: COLORS.text },
@@ -520,7 +635,9 @@ const styles = StyleSheet.create({
   badgeWon: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BRAND.gold, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 4 },
   badgeWonText: { fontFamily: FONT.bold, fontSize: 15, color: BRAND.navy },
   arrivedSub: { fontSize: 14, color: COLORS.muted, marginBottom: 8, textAlign: 'center' },
-  primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center', minHeight: 48 },
+  savedPill: { flexDirection: 'row', justifyContent: 'center', gap: 8, backgroundColor: BRAND.limestone },
+  doneBtn: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center' },
   primaryText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },
   done: { color: COLORS.muted, fontSize: 16, fontWeight: '600' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: '#fff' },

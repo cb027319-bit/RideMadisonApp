@@ -1,0 +1,44 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "creator": "BRouter-1.7",
+        "name": "brouter_safety_0",
+        "track-length": "1210",
+        "filtered ascend": "6",
+        "total-time": "290",
+        "voicehints": [
+          [2, 2, 0, 400.0, -88.0],
+          [4, 9, 0, 300.0, 20.0],
+          [5, 13, 2, 200.0, 90.0],
+          ["6", "15", "0", "10", "0"],
+          [99, 5, 0, 0, 0],
+          "junk",
+          [3, 77, 0, 0, 0]
+        ],
+        "messages": [
+          ["Longitude", "Latitude", "Elevation", "Distance", "CostPerKm", "ElevCost", "TurnCost", "NodeCost", "InitialCost", "WayTags", "NodeTags", "Time", "Energy"],
+          ["-89384200", "43074700", "262", "300", "1100", "0", "0", "0", "0", "highway=residential name=Williamson Street surface=asphalt", "", "70", "0"],
+          ["-89384200", "43077400", "263", "120", "1000", "0", "0", "0", "0", "highway=residential name=Williamson Street", "", "100", "0"],
+          ["-89380500", "43077400", "264", "300", "1000", "0", "0", "0", "0", "highway=cycleway name=Capital City State Trail surface=asphalt", "", "170", "0"],
+          ["-89378000", "43078000", "265", "250", "1000", "0", "0", "0", "0", "highway=cycleway", "", "230", "0"],
+          ["-89376000", "43079000", "266", "240", "1000", "0", "0", "0", "0", "highway=tertiary name=Main St", "", "290", "0"]
+        ]
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-89.3880, 43.0747, 260],
+          [-89.3862, 43.0747, 261],
+          [-89.3842, 43.0747, 262],
+          [-89.3842, 43.0774, 263],
+          [-89.3805, 43.0774, 264],
+          [-89.3780, 43.0780, 265],
+          [-89.3760, 43.0790, 266]
+        ]
+      }
+    }
+  ]
+}

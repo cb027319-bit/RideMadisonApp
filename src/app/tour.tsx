@@ -6,14 +6,16 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { DirectionsSheet } from '@/components/directions-sheet';
 import { BikeMarker } from '@/components/maneuver-icon';
 import { BRAND, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
-import { bearingAt, buildLine, pointAt, project } from '@/lib/navigation';
+import { formatDistance } from '@/lib/geo';
+import { bearingAt, buildLine, buildManeuvers, pointAt, project } from '@/lib/navigation';
 import { useRoute } from '@/lib/route';
 import { formatDuration, metersToFeet } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
@@ -23,7 +25,8 @@ const ACCENT = BRAND.red;
 const TOUR_SECONDS = 90;
 const TICK_MS = 250;
 const BARS = 60;
-const MI = 1609.344;
+/** Unplayed elevation bars: visible against white (about 3:1). */
+const UNPLAYED = '#8C877C';
 
 export default function TourScreen() {
   useKeepAwake();
@@ -44,6 +47,11 @@ export default function TourScreen() {
     return () => clearTimeout(t);
   }, []);
   const [profileWidth, setProfileWidth] = useState(1);
+  const [showDirections, setShowDirections] = useState(false);
+  const maneuvers = useMemo(
+    () => (showDirections && trip && line ? buildManeuvers(line, trip.result, (p) => nameAt(paths, p)) : []),
+    [showDirections, trip, line, paths],
+  );
 
   // Where each planned point falls along the route (for "Next: …").
   const stops = useMemo(() => {
@@ -110,7 +118,7 @@ export default function TourScreen() {
     return (
       <SafeAreaView style={styles.empty}>
         <Text style={styles.emptyText}>Pick a route to preview.</Text>
-        <Pressable style={styles.primary} onPress={() => router.back()}>
+        <Pressable style={styles.primary} onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.primaryText}>Back</Text>
         </Pressable>
       </SafeAreaView>
@@ -128,14 +136,28 @@ export default function TourScreen() {
     setAlong(p * line.total);
   };
 
-  const rideIt = () => {
-    route.loadPlan({
-      stops: trip.points.slice(0, trip.points.length > 2 && sameSpot(trip.points[0], trip.points[trip.points.length - 1]) ? -1 : undefined),
-      profile: trip.profile,
-      roundTrip: trip.points.length > 1 && sameSpot(trip.points[0], trip.points[trip.points.length - 1]),
-      result: trip.result,
-    });
-    router.dismissTo('/route');
+  /** Start navigating this ride now. A suggested ride is also loaded into the planner. */
+  const startRide = () => {
+    if (trip.rideId) {
+      const loop = trip.points.length > 1 && sameSpot(trip.points[0], trip.points[trip.points.length - 1]);
+      route.loadPlan({
+        stops: trip.points.slice(0, trip.points.length > 2 && loop ? -1 : undefined),
+        profile: trip.profile,
+        roundTrip: loop,
+        result: trip.result,
+        name: trip.title,
+      });
+    }
+    router.replace('/navigate');
+  };
+
+  const jump = (fraction: number) => {
+    setPlaying(false);
+    setAlong(Math.max(0, Math.min(1, fraction)) * line.total);
+  };
+  const onProgressAction = (e: AccessibilityActionEvent) => {
+    if (e.nativeEvent.actionName === 'increment') jump(progress + 0.1);
+    if (e.nativeEvent.actionName === 'decrement') jump(progress - 0.1);
   };
 
   return (
@@ -165,21 +187,26 @@ export default function TourScreen() {
 
       <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.close} accessibilityLabel="Close preview" hitSlop={8}>
+          <Pressable onPress={() => router.back()} style={styles.close} accessibilityRole="button" accessibilityLabel="Close preview" hitSlop={4}>
             <Ionicons name="close" size={24} color="#fff" />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.kicker}>VIRTUAL RIDE PREVIEW</Text>
-            <Text style={styles.title} numberOfLines={1}>{trip.title}</Text>
+            <Text style={styles.title} numberOfLines={2} accessibilityRole="header">{trip.title}</Text>
           </View>
-          <Pressable onPress={() => setSatellite(!satellite)} style={styles.close} accessibilityLabel="Switch map style" hitSlop={8}>
+          <Pressable
+            onPress={() => setSatellite(!satellite)}
+            style={styles.close}
+            accessibilityRole="button"
+            accessibilityLabel={satellite ? 'Show street map' : 'Show satellite map'}
+            hitSlop={4}>
             <Ionicons name={satellite ? 'map' : 'earth'} size={20} color="#fff" />
           </Pressable>
         </View>
         <View style={styles.chips}>
           <View style={styles.chip}>
-            <Text style={styles.chipBig}>{(along / MI).toFixed(1)}</Text>
-            <Text style={styles.chipSmall}>of {(line.total / MI).toFixed(1)} mi</Text>
+            <Text style={styles.chipBig}>{formatDistance(along)}</Text>
+            <Text style={styles.chipSmall}>of {formatDistance(line.total)}</Text>
           </View>
           <View style={styles.chip}>
             <Text style={styles.chipBig}>{formatDuration(elapsedRideTime)}</Text>
@@ -203,28 +230,42 @@ export default function TourScreen() {
       <SafeAreaView edges={['bottom']} style={styles.bottomWrap} pointerEvents="box-none">
         <View style={styles.panel}>
           {next && !done && (
-            <Text style={styles.next} numberOfLines={1}>
-              Next: <Text style={{ fontWeight: '800' }}>{next.label}</Text> · {((next.along - along) / MI).toFixed(1)} mi
+            <Text style={styles.next} numberOfLines={2}>
+              Next: <Text style={{ fontWeight: '800' }}>{next.label}</Text> · {formatDistance(next.along - along)}
             </Text>
           )}
-          {done && <Text style={styles.next}>That&apos;s the ride! {(line.total / MI).toFixed(1)} miles, {metersToFeet(trip.result.climbM)} ft of climbing.</Text>}
+          {done && <Text style={styles.next}>That&apos;s the ride! {formatDistance(line.total)}, {metersToFeet(trip.result.climbM)} ft of climbing.</Text>}
 
-          <Pressable
-            onLayout={(e: LayoutChangeEvent) => setProfileWidth(e.nativeEvent.layout.width)}
-            onPress={(e) => scrub(e.nativeEvent.locationX)}
-            style={styles.profile}
-            accessibilityLabel="Ride progress. Tap to jump.">
-            {profile
-              ? profile.vals.map((v, i) => {
-                  const h = Number.isFinite(v) ? 8 + ((v - profile.min) / Math.max(1, profile.max - profile.min)) * 44 : 8;
-                  const passed = (i + 0.5) / BARS <= progress;
-                  return <View key={i} style={[styles.bar, { height: h, backgroundColor: passed ? ACCENT : BRAND.limestone }]} />;
-                })
-              : Array.from({ length: BARS }, (_, i) => (
-                  <View key={i} style={[styles.bar, { height: 14, backgroundColor: (i + 0.5) / BARS <= progress ? ACCENT : BRAND.limestone }]} />
-                ))}
-            <View style={[styles.playhead, { left: `${progress * 100}%` }]} />
-          </Pressable>
+          <View style={styles.profileRow}>
+            {profile && (
+              <View style={styles.scale} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <Text style={styles.scaleText}>{metersToFeet(profile.max)} ft</Text>
+                <Text style={styles.scaleText}>{metersToFeet(profile.min)} ft</Text>
+              </View>
+            )}
+            <Pressable
+              onLayout={(e: LayoutChangeEvent) => setProfileWidth(e.nativeEvent.layout.width)}
+              onPress={(e) => scrub(e.nativeEvent.locationX)}
+              style={styles.profile}
+              accessible
+              accessibilityRole="adjustable"
+              accessibilityLabel="Ride progress"
+              accessibilityHint="Swipe up or down to move 10 percent"
+              accessibilityValue={{ text: `${formatDistance(along)} of ${formatDistance(line.total)}, ${Math.round(progress * 100)} percent` }}
+              accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+              onAccessibilityAction={onProgressAction}>
+              {profile
+                ? profile.vals.map((v, i) => {
+                    const h = Number.isFinite(v) ? 8 + ((v - profile.min) / Math.max(1, profile.max - profile.min)) * 44 : 8;
+                    const passed = (i + 0.5) / BARS <= progress;
+                    return <View key={i} style={[styles.bar, { height: h, backgroundColor: passed ? ACCENT : UNPLAYED }]} />;
+                  })
+                : Array.from({ length: BARS }, (_, i) => (
+                    <View key={i} style={[styles.bar, { height: 14, backgroundColor: (i + 0.5) / BARS <= progress ? ACCENT : UNPLAYED }]} />
+                  ))}
+              <View style={[styles.playhead, { left: `${progress * 100}%` }]} />
+            </Pressable>
+          </View>
 
           <View style={styles.controls}>
             <Pressable
@@ -233,20 +274,40 @@ export default function TourScreen() {
                 if (done) setAlong(0);
                 setPlaying(done ? true : !playing);
               }}
-              accessibilityLabel={playing ? 'Pause' : 'Play'}>
+              accessibilityRole="button"
+              accessibilityLabel={done ? 'Play again' : playing ? 'Pause' : 'Play'}>
               <Ionicons name={done ? 'refresh' : playing ? 'pause' : 'play'} size={26} color="#fff" />
             </Pressable>
-            <Pressable style={styles.speedBtn} onPress={() => setSpeed(speed === 1 ? 2 : speed === 2 ? 4 : 1)} accessibilityLabel="Change speed">
+            <Pressable
+              style={styles.speedBtn}
+              onPress={() => setSpeed(speed === 1 ? 2 : speed === 2 ? 4 : 1)}
+              accessibilityRole="button"
+              accessibilityLabel={`Speed ${speed}x`}
+              accessibilityHint="Changes playback speed">
               <Text style={styles.speedText}>{speed}×</Text>
             </Pressable>
+            <Pressable
+              style={styles.speedBtn}
+              onPress={() => setShowDirections(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Directions">
+              <Ionicons name="list" size={22} color={BRAND.navy} />
+            </Pressable>
             <View style={{ flex: 1 }} />
-            <Pressable style={styles.rideBtn} onPress={rideIt} accessibilityRole="button">
+            <Pressable style={styles.rideBtn} onPress={startRide} accessibilityRole="button" accessibilityHint="Turn-by-turn directions with voice">
               <Ionicons name="navigate" size={18} color="#fff" />
-              <Text style={styles.rideText}>Ride this</Text>
+              <Text style={styles.rideText}>Start ride</Text>
             </Pressable>
           </View>
         </View>
       </SafeAreaView>
+      <DirectionsSheet
+        visible={showDirections}
+        title={trip.title}
+        maneuvers={maneuvers}
+        totalM={trip.result.distanceM || line.total}
+        onClose={() => setShowDirections(false)}
+      />
     </View>
   );
 }
@@ -267,27 +328,30 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  close: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(20,33,61,0.85)', alignItems: 'center', justifyContent: 'center' },
-  kicker: { color: BRAND.gold, fontSize: 11, fontFamily: FONT.black, letterSpacing: 1 },
+  close: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(20,33,61,0.85)', alignItems: 'center', justifyContent: 'center' },
+  kicker: { color: BRAND.gold, fontSize: 13, fontFamily: FONT.black, letterSpacing: 1 },
   title: { color: '#fff', fontSize: 21, fontFamily: FONT.black, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
   chips: { flexDirection: 'row', gap: 8, marginTop: 10 },
   chip: { backgroundColor: 'rgba(20,33,61,0.85)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
   chipBig: { color: '#fff', fontSize: 18, fontFamily: FONT.black },
-  chipSmall: { color: BRAND.limestone, fontSize: 11 },
+  chipSmall: { color: BRAND.limestone, fontSize: 13 },
   onTrail: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8,
     backgroundColor: '#15803d', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
   },
-  onTrailText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  onTrailText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10 },
   panel: { backgroundColor: '#fff', borderRadius: 22, padding: 16, marginBottom: 6, gap: 12, ...shadow },
   next: { fontSize: 15, color: BRAND.navy },
-  profile: { height: 56, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5 },
+  profileRow: { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
+  scale: { justifyContent: 'space-between', paddingVertical: 0 },
+  scaleText: { fontSize: 13, color: BRAND.slate },
+  profile: { flex: 1, height: 56, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5 },
   bar: { flex: 1, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
   playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: BRAND.navy },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   playBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
-  speedBtn: { width: 48, height: 40, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
+  speedBtn: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
   speedText: { fontSize: 16, fontFamily: FONT.black, color: BRAND.navy },
   rideBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BRAND.red, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 14 },
   rideText: { color: '#fff', fontSize: 16, fontFamily: FONT.black },
