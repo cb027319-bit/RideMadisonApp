@@ -11,6 +11,7 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BikeMarker } from '@/components/maneuver-icon';
+import { BRAND, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { bearingAt, buildLine, pointAt, project } from '@/lib/navigation';
 import { useRoute } from '@/lib/route';
@@ -18,7 +19,7 @@ import { formatDuration, metersToFeet } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
 
-const ACCENT = '#7c3aed';
+const ACCENT = BRAND.red;
 const TOUR_SECONDS = 90;
 const TICK_MS = 250;
 const BARS = 60;
@@ -217,10 +218,10 @@ export default function TourScreen() {
               ? profile.vals.map((v, i) => {
                   const h = Number.isFinite(v) ? 8 + ((v - profile.min) / Math.max(1, profile.max - profile.min)) * 44 : 8;
                   const passed = (i + 0.5) / BARS <= progress;
-                  return <View key={i} style={[styles.bar, { height: h, backgroundColor: passed ? ACCENT : '#c4b5fd' }]} />;
+                  return <View key={i} style={[styles.bar, { height: h, backgroundColor: passed ? ACCENT : BRAND.limestone }]} />;
                 })
               : Array.from({ length: BARS }, (_, i) => (
-                  <View key={i} style={[styles.bar, { height: 14, backgroundColor: (i + 0.5) / BARS <= progress ? ACCENT : '#c4b5fd' }]} />
+                  <View key={i} style={[styles.bar, { height: 14, backgroundColor: (i + 0.5) / BARS <= progress ? ACCENT : BRAND.limestone }]} />
                 ))}
             <View style={[styles.playhead, { left: `${progress * 100}%` }]} />
           </Pressable>
@@ -266,13 +267,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  close: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
-  kicker: { color: '#e9d5ff', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  title: { color: '#fff', fontSize: 20, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
+  close: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(20,33,61,0.85)', alignItems: 'center', justifyContent: 'center' },
+  kicker: { color: BRAND.gold, fontSize: 11, fontFamily: FONT.black, letterSpacing: 1 },
+  title: { color: '#fff', fontSize: 21, fontFamily: FONT.black, textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 },
   chips: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  chip: { backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
-  chipBig: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  chipSmall: { color: '#d1d5db', fontSize: 11 },
+  chip: { backgroundColor: 'rgba(20,33,61,0.85)', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8 },
+  chipBig: { color: '#fff', fontSize: 18, fontFamily: FONT.black },
+  chipSmall: { color: BRAND.limestone, fontSize: 11 },
   onTrail: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8,
     backgroundColor: '#15803d', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
@@ -280,18 +281,18 @@ const styles = StyleSheet.create({
   onTrailText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10 },
   panel: { backgroundColor: '#fff', borderRadius: 22, padding: 16, marginBottom: 6, gap: 12, ...shadow },
-  next: { fontSize: 15, color: '#111827' },
+  next: { fontSize: 15, color: BRAND.navy },
   profile: { height: 56, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5 },
   bar: { flex: 1, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-  playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: '#111827' },
+  playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: BRAND.navy },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  playBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
+  playBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
   speedBtn: { width: 48, height: 40, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
-  speedText: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  rideBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#15803d', paddingHorizontal: 18, paddingVertical: 14, borderRadius: 14 },
-  rideText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  speedText: { fontSize: 16, fontFamily: FONT.black, color: BRAND.navy },
+  rideBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BRAND.red, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 14 },
+  rideText: { color: '#fff', fontSize: 16, fontFamily: FONT.black },
   stopDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff', borderWidth: 3, borderColor: ACCENT },
-  primary: { alignSelf: 'stretch', backgroundColor: ACCENT, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   primaryText: { color: '#fff', fontSize: 17, fontWeight: '700' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: '#fff' },
   emptyText: { fontSize: 17, color: '#111827', textAlign: 'center' },

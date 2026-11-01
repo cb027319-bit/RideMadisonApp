@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppIcon, Wordmark } from '@/components/brand';
 import { useAuth } from '@/lib/auth';
-import { COLORS } from '@/lib/config';
+import { BRAND, COLORS, FONT } from '@/lib/config';
 import { formatPhone, isValidEmail, normalizePhone } from '@/lib/contact';
 import { usePrefs } from '@/lib/prefs';
 
@@ -76,9 +77,15 @@ function SheetBody() {
           {current === 'choose' && (
             <>
               <View style={styles.logo}>
-                <Ionicons name="bicycle" size={34} color="#fff" />
+                <AppIcon size={72} />
               </View>
-              <Text style={styles.h1}>{mode === 'welcome' ? 'Join Ride Madison' : 'Create a free account'}</Text>
+              {mode === 'welcome' ? (
+                <Text style={styles.h1}>
+                  Join <Wordmark size={30} />
+                </Text>
+              ) : (
+                <Text style={styles.h1}>Create a free account</Text>
+              )}
               <Text style={styles.sub}>
                 {auth.sheet!.reason ??
                   'Save your rides, get alerts when your trails close, and report hazards for other riders. Free, always.'}
@@ -282,10 +289,8 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, minHeight: 40 },
   later: { fontSize: 16, color: COLORS.muted, fontWeight: '600' },
   content: { padding: 24, paddingTop: 8 },
-  logo: {
-    width: 64, height: 64, borderRadius: 18, backgroundColor: COLORS.brand, alignItems: 'center', justifyContent: 'center', marginBottom: 18,
-  },
-  h1: { fontSize: 28, fontWeight: '800', color: COLORS.text },
+  logo: { marginBottom: 18 },
+  h1: { fontSize: 28, fontFamily: FONT.black, color: COLORS.text },
   sub: { fontSize: 16, color: COLORS.muted, marginTop: 8, lineHeight: 22 },
   buttons: { marginTop: 28, gap: 12 },
   appleBtn: { height: 50, width: '100%' },
@@ -293,21 +298,21 @@ const styles = StyleSheet.create({
     height: 50, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border, flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center', gap: 10,
   },
-  providerText: { fontSize: 17, fontWeight: '600', color: COLORS.text },
+  providerText: { fontSize: 17, fontFamily: FONT.bold, color: COLORS.text },
   pressed: { backgroundColor: '#f3f4f6' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 },
   rule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border },
   or: { color: COLORS.muted, fontSize: 13 },
-  label: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginTop: 20, marginBottom: 6 },
+  label: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.text, marginTop: 20, marginBottom: 6 },
   optional: { fontWeight: '400', color: COLORS.muted },
   input: {
     height: 50, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 14, fontSize: 17, color: COLORS.text,
   },
   codeInput: { marginTop: 24, fontSize: 28, letterSpacing: 10, textAlign: 'center', height: 60, marginBottom: 12 },
   primaryBtn: { height: 50, borderRadius: 12, backgroundColor: COLORS.brand, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  primaryText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },
   disabled: { opacity: 0.45 },
-  error: { color: '#b91c1c', fontSize: 14, marginTop: 12, fontWeight: '600' },
+  error: { color: BRAND.red, fontSize: 14, marginTop: 12, fontWeight: '600' },
   legal: { fontSize: 12, color: COLORS.muted, marginTop: 24, lineHeight: 17 },
   link: { color: COLORS.brand, textDecorationLine: 'underline' },
   linkCenter: { color: COLORS.brand, fontSize: 15, fontWeight: '600', textAlign: 'center' },

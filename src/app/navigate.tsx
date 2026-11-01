@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BikeMarker, ManeuverIcon } from '@/components/maneuver-icon';
 import { useAuth } from '@/lib/auth';
-import { COLORS } from '@/lib/config';
+import { BRAND, COLORS, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import {
@@ -26,7 +26,7 @@ import { fetchRoute, formatDuration, type LatLon } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
 
-const ACCENT = '#7c3aed';
+const ACCENT = BRAND.red;
 
 /** Animated marker typed loosely: react-native-maps' types omit children. */
 const AnimatedMarker = MarkerAnimated as unknown as React.ComponentType<{
@@ -348,7 +348,7 @@ export default function NavigateScreen() {
       <SafeAreaView edges={['bottom']} style={styles.bottomWrap} pointerEvents="box-none">
         {!following && (
           <Pressable style={styles.recenter} onPress={recenter} accessibilityRole="button">
-            <Ionicons name="navigate" size={18} color={ACCENT} />
+            <Ionicons name="navigate" size={18} color={BRAND.navy} />
             <Text style={styles.recenterText}>Recenter</Text>
           </Pressable>
         )}
@@ -385,7 +385,7 @@ export default function NavigateScreen() {
       {arrived && (
         <View style={styles.arrivedWrap}>
           <View style={styles.arrivedCard}>
-            <Ionicons name="trophy" size={44} color="#f59e0b" />
+            <Ionicons name="trophy" size={44} color={BRAND.gold} />
             <Text style={styles.arrivedTitle}>You made it!</Text>
             <Text style={styles.arrivedStats}>
               {formatDistance(Math.max(ridden, nav.line.total * 0.98))}  ·  {formatDuration((now - startedAt) / 1000)}
@@ -419,41 +419,41 @@ const shadow = {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 10 },
-  banner: { marginTop: 6, backgroundColor: '#064e3b', borderRadius: 20, padding: 16, ...shadow },
+  banner: { marginTop: 6, backgroundColor: BRAND.navy, borderRadius: 20, padding: 16, ...shadow },
   bannerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  turnIcon: { width: 64, height: 64, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  turnDistance: { color: '#fff', fontSize: 34, fontWeight: '800' },
-  turnText: { color: '#fff', fontSize: 19, fontWeight: '600', marginTop: 2 },
-  bannerMain: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  bannerSub: { color: '#d1fae5', fontSize: 14, marginTop: 4 },
+  turnIcon: { width: 64, height: 64, borderRadius: 16, backgroundColor: BRAND.red, alignItems: 'center', justifyContent: 'center' },
+  turnDistance: { color: '#fff', fontSize: 36, fontFamily: FONT.black },
+  turnText: { color: '#fff', fontSize: 19, fontFamily: FONT.bold, marginTop: 2 },
+  bannerMain: { color: '#fff', fontSize: 22, fontFamily: FONT.black },
+  bannerSub: { color: BRAND.limestone, fontSize: 14, marginTop: 4 },
   thenRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.3)',
   },
-  thenText: { color: '#d1fae5', fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  thenText: { color: BRAND.limestone, fontSize: 15, fontFamily: FONT.bold, flexShrink: 1 },
   bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10 },
   bottom: {
     flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 22,
     padding: 14, marginBottom: 6, ...shadow,
   },
   endBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
-  timeLeft: { fontSize: 28, fontWeight: '800', color: '#15803d' },
+  timeLeft: { fontSize: 30, fontFamily: FONT.black, color: BRAND.navy },
   remaining: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
   recenter: {
     alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff',
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, marginBottom: 10, ...shadow,
   },
-  recenterText: { color: ACCENT, fontWeight: '700', fontSize: 15 },
+  recenterText: { color: BRAND.navy, fontFamily: FONT.bold, fontSize: 15 },
   simBtn: { alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.75)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, marginBottom: 4 },
   simText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   arrivedWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
   arrivedCard: { backgroundColor: '#fff', borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
-  arrivedTitle: { fontSize: 28, fontWeight: '800', color: COLORS.text },
-  arrivedStats: { fontSize: 18, fontWeight: '700', color: '#15803d' },
+  arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: COLORS.text },
+  arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: BRAND.red },
   arrivedSub: { fontSize: 14, color: COLORS.muted, marginBottom: 8, textAlign: 'center' },
-  primary: { alignSelf: 'stretch', backgroundColor: ACCENT, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  primaryText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  primary: { alignSelf: 'stretch', backgroundColor: BRAND.navy, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  primaryText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },
   done: { color: COLORS.muted, fontSize: 16, fontWeight: '600' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: '#fff' },
   emptyText: { fontSize: 17, color: COLORS.text, textAlign: 'center' },

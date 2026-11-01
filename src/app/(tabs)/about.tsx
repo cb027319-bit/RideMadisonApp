@@ -4,9 +4,10 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, T
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 
+import { HorizontalLogo } from '@/components/brand';
 import { Onboarding } from '@/components/onboarding';
 import { useAuth } from '@/lib/auth';
-import { COLORS } from '@/lib/config';
+import { BRAND, COLORS, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { PATH_META, PLACE_META } from '@/lib/labels';
 import { BIKE_OPTIONS, COMFORT_OPTIONS, usePrefs } from '@/lib/prefs';
@@ -49,7 +50,10 @@ export default function AboutScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.h1}>Ride Madison</Text>
+      <View style={styles.hero}>
+        <HorizontalLogo height={46} />
+        <Text style={styles.heroTag}>The free local riding guide for Greater Madison</Text>
+      </View>
       <Text style={styles.p}>
         Bike paths, live BCycle e-bikes, bike shops, fix-it stations and parking for Madison and nearby
         communities, in one free app.
@@ -188,10 +192,11 @@ export default function AboutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: BRAND.cream },
   content: { padding: 20, paddingBottom: 40 },
-  h1: { fontSize: 26, fontWeight: '800', color: COLORS.brandDark },
-  h2: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginTop: 24, marginBottom: 8 },
+  hero: { backgroundColor: BRAND.navy, borderRadius: 20, padding: 20, gap: 10, marginBottom: 8 },
+  heroTag: { color: BRAND.limestone, fontSize: 14, fontFamily: FONT.medium },
+  h2: { fontSize: 18, fontFamily: FONT.black, color: COLORS.text, marginTop: 24, marginBottom: 8 },
   p: { fontSize: 15, lineHeight: 22, color: COLORS.text, marginTop: 6 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   line: { width: 28, height: 4, borderRadius: 2 },
@@ -202,18 +207,19 @@ const styles = StyleSheet.create({
     marginTop: 12, backgroundColor: COLORS.brand, borderRadius: 10,
     paddingVertical: 12, alignItems: 'center',
   },
-  buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  buttonText: { color: '#fff', fontSize: 15, fontFamily: FONT.black },
   link: { color: COLORS.brand, textDecorationLine: 'underline', fontWeight: '600' },
-  accountBox: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14 },
+  accountBox: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14, backgroundColor: '#fff' },
   accountActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 18, marginTop: 12 },
   signInBtn: { backgroundColor: COLORS.brand, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   prefsRow: {
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14,
+    backgroundColor: '#fff',
   },
-  prefsText: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  prefsText: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.text },
   prefsHint: { fontSize: 12, color: COLORS.muted, marginTop: 2 },
   guide: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
   guideHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
-  guideTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, flex: 1 },
+  guideTitle: { fontSize: 16, fontFamily: FONT.bold, color: COLORS.text, flex: 1 },
   version: { marginTop: 28, fontSize: 12, color: COLORS.muted, textAlign: 'center' },
 });

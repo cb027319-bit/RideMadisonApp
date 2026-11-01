@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
-import { COLORS, MADISON_CENTER } from '@/lib/config';
+import { BRAND, COLORS, FONT, MADISON_CENTER } from '@/lib/config';
 import { useData, type Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { PLACE_META, timeAgo } from '@/lib/labels';
@@ -159,10 +159,10 @@ const styles = StyleSheet.create({
   segmentItem: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   segmentActive: { backgroundColor: COLORS.bg, elevation: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 2 },
   segmentText: { fontSize: 13, fontWeight: '600', color: COLORS.muted },
-  segmentTextActive: { color: COLORS.text },
+  segmentTextActive: { color: BRAND.navy, fontFamily: FONT.black },
   note: { fontSize: 13, color: COLORS.muted, paddingHorizontal: 16, paddingBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
-  title: { fontSize: 16, fontWeight: '600', color: COLORS.text },
+  title: { fontSize: 16, fontFamily: FONT.bold, color: COLORS.text },
   subtitle: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   right: { alignItems: 'flex-end', gap: 2 },
   badge: {

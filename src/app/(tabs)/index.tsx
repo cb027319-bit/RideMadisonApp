@@ -5,10 +5,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import MapView, { Marker, Polyline, type MapPressEvent } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LogoMark } from '@/components/brand';
 import { DetailCard, PartnerMark, selectionCenter } from '@/components/detail-card';
 import { Onboarding } from '@/components/onboarding';
 import { PathLines } from '@/components/path-lines';
-import { COLORS, INITIAL_REGION, MADISON_CENTER } from '@/lib/config';
+import { BRAND, COLORS, FONT, INITIAL_REGION, MADISON_CENTER } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 import { useData, type Selection } from '@/lib/data';
 import { pointInBBox, regionToBBox, type Region } from '@/lib/geo';
@@ -336,7 +337,9 @@ export default function MapScreen() {
           }}
           accessibilityRole="search"
           accessibilityLabel="Where to? Plan a bike route">
-          <Ionicons name="search" size={18} color={COLORS.brand} />
+          <View style={styles.whereToLogo}>
+            <LogoMark size={26} color={BRAND.limestone} />
+          </View>
           <Text style={styles.whereToText}>Where to?</Text>
           <View style={styles.whereToBadge}>
             <Ionicons name="navigate" size={14} color="#fff" />
@@ -490,20 +493,21 @@ const styles = StyleSheet.create({
   top: { position: 'absolute', top: 0, left: 0, right: 0 },
   whereTo: {
     marginHorizontal: 12, marginTop: 8, height: 50, borderRadius: 25, backgroundColor: COLORS.bg,
-    flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6, gap: 10, ...shadow,
+    flexDirection: 'row', alignItems: 'center', paddingLeft: 5, paddingRight: 6, gap: 10, ...shadow,
   },
-  whereToText: { flex: 1, fontSize: 17, fontWeight: '600', color: COLORS.text },
+  whereToLogo: { width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center' },
+  whereToText: { flex: 1, fontSize: 18, fontFamily: FONT.bold, color: COLORS.text },
   whereToBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.brand,
+    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: BRAND.red,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
   },
-  whereToBadgeText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  whereToBadgeText: { color: '#fff', fontFamily: FONT.black, fontSize: 14 },
   chips: { paddingHorizontal: 12, paddingVertical: 8, gap: 6 },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 7,
     borderRadius: 999, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, ...shadow,
   },
-  chipText: { fontSize: 13, fontWeight: '600', color: COLORS.text },
+  chipText: { fontSize: 13, fontFamily: FONT.bold, color: COLORS.text },
   weather: {
     alignSelf: 'flex-start', marginLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: 'rgba(255,255,255,0.95)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, ...shadow,

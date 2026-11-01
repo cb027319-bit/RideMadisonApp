@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { cached } from '@/lib/cache';
-import { COLORS, MADISON_CENTER } from '@/lib/config';
+import { BRAND, COLORS, FONT, MADISON_CENTER } from '@/lib/config';
 import { simplify, type LonLat } from '@/lib/geo';
 import { fetchRoute, formatDuration, metersToFeet, type LatLon, type RouteResult } from '@/lib/routing';
 import {
@@ -15,7 +15,7 @@ import {
   SUGGESTED_RIDES, type FromMeFilter, type LengthFilter, type MeasuredRide, type RideType, type SuggestedRide,
 } from '@/lib/suggested';
 
-const ACCENT = '#7c3aed';
+const ACCENT = BRAND.navy;
 const TTL = 30 * 24 * 3600 * 1000;
 
 /** Keep cached rides light: ~2 m line simplification. */
@@ -220,9 +220,9 @@ function RideCard({ m, failed, onPress, onPreview }: {
 const TYPE_COLOR: Record<RideType, string> = { trail: '#15803d', gravel: '#a16207', road: '#2563eb' };
 
 const styles = StyleSheet.create({
-  sheet: { flex: 1, backgroundColor: '#f9fafb' },
+  sheet: { flex: 1, backgroundColor: BRAND.cream },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: COLORS.bg },
-  title: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+  title: { fontSize: 24, fontFamily: FONT.black, color: COLORS.text },
   done: { fontSize: 16, fontWeight: '700', color: ACCENT },
   filterRow: { backgroundColor: COLORS.bg, paddingLeft: 16, paddingBottom: 10, gap: 6 },
   filterLabel: { fontSize: 12, fontWeight: '700', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -238,11 +238,11 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  cardTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
+  cardTitle: { fontSize: 18, fontFamily: FONT.black, color: COLORS.text },
   cardArea: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   typeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   typeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  stats: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  stats: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.text },
   statsMuted: { fontSize: 14, color: COLORS.muted },
   mixBar: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: '#e5e7eb' },
   desc: { fontSize: 14, color: COLORS.text, lineHeight: 19 },
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   },
   previewText: { color: ACCENT, fontWeight: '700', fontSize: 14 },
   rideBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: ACCENT,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: BRAND.red,
     borderRadius: 12, paddingVertical: 10,
   },
   rideBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },

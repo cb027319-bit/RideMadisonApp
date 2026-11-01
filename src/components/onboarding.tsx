@@ -6,7 +6,8 @@ import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { COLORS } from '@/lib/config';
+import { AppIcon, Wordmark } from '@/components/brand';
+import { BRAND, COLORS, FONT } from '@/lib/config';
 import { BIKE_OPTIONS, COMFORT_OPTIONS, type BikeType, type Comfort, type Prefs } from '@/lib/prefs';
 
 interface Props {
@@ -25,7 +26,10 @@ export function Onboarding({ visible, initial, onDone, onSkip }: Props) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onSkip}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.welcome}>Welcome to Ride Madison</Text>
+          <AppIcon size={64} />
+          <Text style={styles.welcome}>
+            Welcome to <Wordmark size={28} />
+          </Text>
           <Text style={styles.sub}>Two quick questions so routes fit how you ride.</Text>
 
           <Text style={styles.q}>What do you ride?</Text>
@@ -86,25 +90,25 @@ export function Onboarding({ visible, initial, onDone, onSkip }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: 24, paddingBottom: 12 },
-  welcome: { fontSize: 28, fontWeight: '800', color: COLORS.brandDark },
+  welcome: { fontSize: 28, fontFamily: FONT.black, color: COLORS.text, marginTop: 16 },
   sub: { fontSize: 16, color: COLORS.muted, marginTop: 6 },
-  q: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginTop: 28, marginBottom: 12 },
+  q: { fontSize: 19, fontFamily: FONT.black, color: COLORS.text, marginTop: 28, marginBottom: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     width: '48%', flexGrow: 1, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: 14,
     paddingVertical: 16, alignItems: 'center', gap: 6,
   },
   tileOn: { backgroundColor: COLORS.brand, borderColor: COLORS.brand },
-  tileText: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  tileText: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.text },
   option: {
     flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: 14, padding: 14, marginBottom: 10,
   },
-  optionOn: { borderColor: COLORS.brand, backgroundColor: '#f0fdfa' },
+  optionOn: { borderColor: COLORS.brand, backgroundColor: BRAND.cream },
   optionTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text },
   optionDetail: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   footer: { paddingHorizontal: 24, paddingBottom: 8, gap: 4 },
-  cta: { backgroundColor: COLORS.brand, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  ctaText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  cta: { backgroundColor: BRAND.red, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  ctaText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },
   skip: { color: COLORS.muted, fontSize: 15 },
 });

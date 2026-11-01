@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useEffect } from 'react';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { COLORS } from '@/lib/config';
+import { BRAND, COLORS, FONT } from '@/lib/config';
 import type { Selection } from '@/lib/data';
 import { distanceMeters, formatDistance } from '@/lib/geo';
 import { PATH_META, PLACE_META, timeAgo } from '@/lib/labels';
@@ -385,18 +385,18 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  kicker: { fontSize: 12, fontWeight: '600', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  title: { fontSize: 19, fontWeight: '700', color: COLORS.text, marginTop: 2 },
+  kicker: { fontSize: 12, fontFamily: FONT.bold, color: BRAND.red, textTransform: 'uppercase', letterSpacing: 0.6 },
+  title: { fontSize: 20, fontFamily: FONT.black, color: COLORS.text, marginTop: 2 },
   line: { fontSize: 15, color: COLORS.text, marginTop: 2 },
   muted: { fontSize: 13, color: COLORS.muted },
   source: { fontSize: 11, color: COLORS.muted, marginTop: 6 },
   warn: { fontSize: 14, color: '#b91c1c', fontWeight: '600', marginTop: 2 },
   counts: { flexDirection: 'row', gap: 24, marginVertical: 4 },
-  countValue: { fontSize: 30, fontWeight: '800' },
+  countValue: { fontSize: 32, fontFamily: FONT.black },
   countLabel: { fontSize: 13, color: COLORS.muted },
   stats: { flexDirection: 'row', gap: 12 },
   statLabel: { fontSize: 12, color: COLORS.muted },
-  statValue: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginTop: 2 },
+  statValue: { fontSize: 16, fontFamily: FONT.black, color: COLORS.text, marginTop: 2 },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: COLORS.text, marginTop: 4 },
   parkTrail: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   parkTrailName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
@@ -433,5 +433,5 @@ const styles = StyleSheet.create({
     borderColor: COLORS.brand,
   },
   actionPrimary: { backgroundColor: COLORS.brand },
-  actionText: { fontSize: 14, fontWeight: '600', color: COLORS.brand },
+  actionText: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.brand },
 });

@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PathLines } from '@/components/path-lines';
 import { SuggestedRidesSheet } from '@/components/suggested-rides';
 import { routePoints, type SuggestedRide } from '@/lib/suggested';
-import { COLORS, INITIAL_REGION } from '@/lib/config';
+import { BRAND, COLORS, FONT, INITIAL_REGION } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/data';
 import { formatDistance, type Region } from '@/lib/geo';
@@ -23,7 +23,8 @@ import {
   type RouteProfile,
 } from '@/lib/routing';
 
-const ROUTE_COLOR = '#7c3aed';
+const ROUTE_COLOR = BRAND.red; // the route line and stop pins
+const PRIMARY = BRAND.navy; // main buttons
 
 export default function RouteScreen() {
   const { paths, location } = useData();
@@ -312,12 +313,12 @@ export default function RouteScreen() {
 
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>Round trip</Text>
-              <Switch value={route.roundTrip} onValueChange={route.setRoundTrip} trackColor={{ true: ROUTE_COLOR }} />
+              <Switch value={route.roundTrip} onValueChange={route.setRoundTrip} trackColor={{ true: PRIMARY }} />
             </View>
             {location && (
               <View style={styles.toggleRow}>
                 <Text style={styles.toggleLabel}>Start from my location</Text>
-                <Switch value={route.startFromMe} onValueChange={route.setStartFromMe} trackColor={{ true: ROUTE_COLOR }} />
+                <Switch value={route.startFromMe} onValueChange={route.setStartFromMe} trackColor={{ true: PRIMARY }} />
               </View>
             )}
 
@@ -489,7 +490,7 @@ function Action({ icon, label, onPress, primary }: { icon: keyof typeof Ionicons
       onPress={onPress}
       accessibilityRole="button"
       style={({ pressed }) => [styles.action, primary && styles.actionPrimary, pressed && { opacity: 0.7 }]}>
-      <Ionicons name={icon} size={16} color={primary ? '#fff' : ROUTE_COLOR} />
+      <Ionicons name={icon} size={16} color={primary ? '#fff' : PRIMARY} />
       <Text style={[styles.actionText, primary && { color: '#fff' }]}>{label}</Text>
     </Pressable>
   );
@@ -572,7 +573,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 16, color: COLORS.text },
   results: { marginTop: 6, backgroundColor: COLORS.bg, borderRadius: 14, maxHeight: 320, overflow: 'hidden', ...shadow },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
-  resultTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text },
+  resultTitle: { fontSize: 16, fontFamily: FONT.bold, color: COLORS.text },
   resultSub: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   resultEmpty: { padding: 16, color: COLORS.muted, textAlign: 'center' },
   pressed: { backgroundColor: '#f3f4f6' },
@@ -583,13 +584,13 @@ const styles = StyleSheet.create({
   },
   handleArea: { paddingTop: 8, paddingBottom: 10, alignItems: 'center', gap: 8 },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' },
-  summary: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  summary: { fontSize: 19, fontFamily: FONT.black, color: COLORS.text },
   ideas: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: ROUTE_COLOR, borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: PRIMARY, borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
   },
-  ideasTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  ideasSub: { color: '#ede9fe', fontSize: 12, marginTop: 2 },
+  ideasTitle: { color: '#fff', fontSize: 16, fontFamily: FONT.black },
+  ideasSub: { color: BRAND.limestone, fontSize: 12, marginTop: 2 },
   mix: { alignSelf: 'stretch', gap: 4 },
   mixBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#e5e7eb' },
   mixText: { fontSize: 12, color: COLORS.muted, textAlign: 'center' },
@@ -611,29 +612,29 @@ const styles = StyleSheet.create({
   segmentItem: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   segmentActive: { backgroundColor: COLORS.bg, elevation: 1, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 2 },
   segmentText: { fontSize: 14, fontWeight: '600', color: COLORS.muted },
-  segmentTextActive: { color: ROUTE_COLOR },
+  segmentTextActive: { color: PRIMARY, fontFamily: FONT.black },
   hint: { fontSize: 12, color: COLORS.muted, marginTop: 6, textAlign: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
   toggleLabel: { fontSize: 15, color: COLORS.text },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   action: {
     flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9,
-    borderRadius: 999, borderWidth: 1, borderColor: ROUTE_COLOR,
+    borderRadius: 999, borderWidth: 1, borderColor: PRIMARY,
   },
-  actionPrimary: { backgroundColor: ROUTE_COLOR },
-  actionText: { fontSize: 14, fontWeight: '600', color: ROUTE_COLOR },
+  actionPrimary: { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  actionText: { fontSize: 14, fontFamily: FONT.bold, color: PRIMARY },
   footnote: { fontSize: 12, color: COLORS.muted, marginTop: 8 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 },
   dialog: { backgroundColor: COLORS.bg, borderRadius: 16, padding: 20, gap: 14 },
-  dialogTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
+  dialogTitle: { fontSize: 19, fontFamily: FONT.black, color: COLORS.text },
   dialogInput: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
   dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
   dialogBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
-  dialogBtnPrimary: { backgroundColor: ROUTE_COLOR },
+  dialogBtnPrimary: { backgroundColor: PRIMARY },
   dialogBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.text },
   sheet: { flex: 1, backgroundColor: COLORS.bg },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  sheetTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
-  sheetDone: { fontSize: 16, fontWeight: '600', color: ROUTE_COLOR },
+  sheetTitle: { fontSize: 22, fontFamily: FONT.black, color: COLORS.text },
+  sheetDone: { fontSize: 16, fontFamily: FONT.bold, color: PRIMARY },
   savedRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
 });
