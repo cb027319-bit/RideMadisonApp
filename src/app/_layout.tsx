@@ -5,7 +5,7 @@ import { RedHatDisplay_700Bold } from "@expo-google-fonts/red-hat-display/700Bol
 import { RedHatDisplay_800ExtraBold } from "@expo-google-fonts/red-hat-display/800ExtraBold";
 import { RedHatDisplay_900Black } from "@expo-google-fonts/red-hat-display/900Black";
 import { useFonts } from "expo-font";
-import { DefaultTheme, Stack, ThemeProvider } from "expo-router";
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
@@ -13,11 +13,12 @@ import { useEffect, useState } from "react";
 import { AuthSheet } from "@/components/auth-sheet";
 import { LaunchDoneContext, LaunchScreen } from "@/components/launch-screen";
 import { AuthProvider } from "@/lib/auth";
-import { BRAND, COLORS } from "@/lib/config";
 import { DataProvider } from "@/lib/data";
+import { LanguageProvider } from "@/lib/i18n";
 import { PrefsProvider } from "@/lib/prefs";
 import { RideLogProvider } from "@/lib/ridelog";
 import { RouteProvider } from "@/lib/route";
+import { ThemeProvider as AppThemeProvider, useTheme } from "@/lib/theme";
 import { TripProvider } from "@/lib/trip";
 
 export const unstable_settings = {
@@ -26,17 +27,30 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const theme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: COLORS.brand,
-    background: BRAND.cream,
-    text: BRAND.navy,
-  },
-};
-
 export default function RootLayout() {
+  return (
+    <AppThemeProvider>
+      <LanguageProvider>
+        <AppShell />
+      </LanguageProvider>
+    </AppThemeProvider>
+  );
+}
+
+function AppShell() {
+  const { c } = useTheme();
+  const base = c.dark ? DarkTheme : DefaultTheme;
+  const theme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: c.primary,
+      background: c.bg,
+      card: c.surface,
+      text: c.text,
+      border: c.border,
+    },
+  };
   const [fontsLoaded, fontError] = useFonts({
     RedHatDisplay_300Light,
     RedHatDisplay_400Regular,
@@ -85,7 +99,9 @@ export default function RootLayout() {
                       />
                     </Stack>
                     {!showLaunch && <AuthSheet />}
-                    <StatusBar style={showLaunch ? "light" : "dark"} />
+                    <StatusBar
+                      style={showLaunch || c.dark ? "light" : "dark"}
+                    />
                     {showLaunch && (
                       <LaunchScreen onDone={() => setShowLaunch(false)} />
                     )}
