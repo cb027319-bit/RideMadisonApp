@@ -7,7 +7,6 @@
 // given and a key + '_one' exists, it is used for count === 1.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getLocales } from 'expo-localization';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { EN, ES, type Key } from '@/locales';
@@ -20,6 +19,9 @@ const DICTS: Record<Lang, Record<string, string>> = { en: EN, es: ES };
 
 function deviceLang(): Lang {
   try {
+    // Loaded lazily so plain Node (unit tests) can import this file; there it falls back to English.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getLocales } = require('expo-localization') as typeof import('expo-localization');
     const code = getLocales()[0]?.languageCode ?? 'en';
     return code === 'es' ? 'es' : 'en';
   } catch {
