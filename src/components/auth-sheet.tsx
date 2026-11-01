@@ -14,9 +14,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppIcon, Wordmark } from '@/components/brand';
 import { useAuth } from '@/lib/auth';
 import { resendSecondsLeft } from '@/lib/auth-errors';
-import { BRAND, COLORS, FONT } from '@/lib/config';
+import { FONT } from '@/lib/config';
 import { formatPhone, isValidEmail, normalizePhone } from '@/lib/contact';
+import { useT } from '@/lib/i18n';
 import { usePrefs } from '@/lib/prefs';
+import { makeStyles, useTheme } from '@/lib/theme';
 
 type Step = 'choose' | 'code' | 'profile';
 
@@ -43,16 +45,19 @@ function SheetBody() {
   const [codeSentAt, setCodeSentAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const resendIn = resendSecondsLeft(codeSentAt, now);
+  const { t } = useT();
+  const { c } = useTheme();
+  const styles = useStyles();
 
   // Tick once a second while the resend cooldown runs.
   useEffect(() => {
     if (codeSentAt == null) return;
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       const n = Date.now();
       setNow(n);
-      if (resendSecondsLeft(codeSentAt, n) === 0) clearInterval(t);
+      if (resendSecondsLeft(codeSentAt, n) === 0) clearInterval(timer);
     }, 1000);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [codeSentAt]);
 
   // Once signed in, the sign-in steps give way to the profile step.
@@ -64,7 +69,7 @@ function SheetBody() {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      setError(e instanceof Error ? e.message : t('more.auth.genericError'));
     } finally {
       setBusy(null);
     }
@@ -82,15 +87,15 @@ function SheetBody() {
               }}
               style={styles.topBtn}
               accessibilityRole="button"
-              accessibilityLabel="Back">
-              <Ionicons name="chevron-back" size={26} color={COLORS.text} />
+              accessibilityLabel={t('common.back')}>
+              <Ionicons name="chevron-back" size={26} color={c.text} />
             </Pressable>
           ) : (
             <View />
           )}
           {current !== 'profile' && (
             <Pressable onPress={auth.closeSheet} style={styles.topBtn} accessibilityRole="button">
-              <Text style={styles.later}>Not now</Text>
+              <Text style={styles.later}>{t('more.auth.notNow')}</Text>
             </Pressable>
           )}
         </View>
@@ -102,16 +107,15 @@ function SheetBody() {
                 <AppIcon size={72} />
               </View>
               {mode === 'welcome' ? (
-                <View style={styles.titleRow} accessible accessibilityRole="header" accessibilityLabel="Join Ride Madison">
-                  <Text style={styles.h1}>Join </Text>
-                  <Wordmark size={30} />
+                <View style={styles.titleRow} accessible accessibilityRole="header" accessibilityLabel={t('more.auth.joinA11y')}>
+                  <Text style={styles.h1}>{t('more.auth.join')}</Text>
+                  <Wordmark size={30} color={c.text} />
                 </View>
               ) : (
-                <Text style={styles.h1} accessibilityRole="header">Create a free account</Text>
+                <Text style={styles.h1} accessibilityRole="header">{t('more.auth.createTitle')}</Text>
               )}
               <Text style={styles.sub}>
-                {auth.sheet!.reason ?? 'Save your rides and stats and find them on any phone. Free, always.'}{' '}
-                The map and directions always work without an account.
+                {auth.sheet!.reason ?? t('more.auth.defaultReason')} {t('more.auth.noAccountNeeded')}
               </Text>
 
               <View style={styles.buttons}>
@@ -121,14 +125,18 @@ function SheetBody() {
                     accessibilityState={{ disabled: !!busy, busy: busy === 'apple' }}>
                     <AppleAuthentication.AppleAuthenticationButton
                       buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                      buttonStyle={
+                        c.dark
+                          ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                          : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                      }
                       cornerRadius={12}
                       style={styles.appleBtn}
                       onPress={() => {
                         if (!busy) void run('apple', auth.signInWithApple);
                       }}
                     />
-                    {busy === 'apple' && <ActivityIndicator color="#fff" style={styles.appleSpinner} />}
+                    {busy === 'apple' && <ActivityIndicator color={c.dark ? '#000000' : '#FFFFFF'} style={styles.appleSpinner} />}
                   </View>
                 )}
                 {auth.googleEnabled && (
@@ -138,15 +146,15 @@ function SheetBody() {
                     disabled={!!busy}
                     accessibilityRole="button"
                     accessibilityState={{ disabled: !!busy, busy: busy === 'google' }}>
-                    {busy === 'google' ? <ActivityIndicator /> : <Ionicons name="logo-google" size={20} color="#ea4335" />}
-                    <Text style={styles.providerText}>Continue with Google</Text>
+                    {busy === 'google' ? <ActivityIndicator color={c.text} /> : <Ionicons name="logo-google" size={20} color="#ea4335" />}
+                    <Text style={styles.providerText}>{t('more.auth.google')}</Text>
                   </Pressable>
                 )}
 
                 {(auth.googleEnabled || auth.appleAvailable) && (
                   <View style={styles.divider}>
                     <View style={styles.rule} />
-                    <Text style={styles.or}>or use email</Text>
+                    <Text style={styles.or}>{t('more.auth.orEmail')}</Text>
                     <View style={styles.rule} />
                   </View>
                 )}
@@ -154,14 +162,15 @@ function SheetBody() {
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="you@example.com"
-                  placeholderTextColor={COLORS.muted}
+                  placeholder={t('more.auth.emailPlaceholder')}
+                  placeholderTextColor={c.textMuted}
+                  keyboardAppearance={c.dark ? 'dark' : 'light'}
                   style={styles.input}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoComplete="email"
                   textContentType="emailAddress"
-                  accessibilityLabel="Email address"
+                  accessibilityLabel={t('more.auth.emailLabel')}
                   editable={!busy}
                 />
                 <Pressable
@@ -178,7 +187,7 @@ function SheetBody() {
                   }
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !isValidEmail(email) || !!busy, busy: busy === 'email' }}>
-                  {busy === 'email' ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Email me a code</Text>}
+                  {busy === 'email' ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.primaryText}>{t('more.auth.emailMe')}</Text>}
                 </Pressable>
               </View>
               {error && <Text style={styles.error} accessibilityLiveRegion="polite" accessibilityRole="alert">{error}</Text>}
@@ -187,32 +196,39 @@ function SheetBody() {
                   style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
                   onPress={auth.closeSheet}
                   accessibilityRole="button">
-                  <Text style={styles.secondaryText}>Just explore the map</Text>
+                  <Text style={styles.secondaryText}>{t('more.auth.explore')}</Text>
                 </Pressable>
               )}
               <Text style={styles.legal}>
-                By continuing you agree to the{' '}
-                <Text style={styles.link} accessibilityRole="link" onPress={() => Linking.openURL('https://ridemadison.com/terms')}>Terms</Text> and{' '}
-                <Text style={styles.link} accessibilityRole="link" onPress={() => Linking.openURL('https://ridemadison.com/privacy')}>Privacy Policy</Text>.
+                {t('more.auth.legalPre')}{' '}
+                <Text style={styles.link} accessibilityRole="link" onPress={() => Linking.openURL('https://ridemadison.com/terms')}>
+                  {t('more.auth.legalTerms')}
+                </Text>{' '}
+                {t('more.auth.legalAnd')}{' '}
+                <Text style={styles.link} accessibilityRole="link" onPress={() => Linking.openURL('https://ridemadison.com/privacy')}>
+                  {t('more.auth.legalPrivacy')}
+                </Text>
+                .
               </Text>
             </>
           )}
 
           {current === 'code' && (
             <>
-              <Text style={styles.h1} accessibilityRole="header">Check your email</Text>
-              <Text style={styles.sub}>Enter the 6-digit code we sent to {email.trim()}.</Text>
+              <Text style={styles.h1} accessibilityRole="header">{t('more.auth.checkEmail')}</Text>
+              <Text style={styles.sub}>{t('more.auth.enterCode', { email: email.trim() })}</Text>
               <TextInput
                 value={code}
-                onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
+                onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
                 placeholder="123456"
-                placeholderTextColor={COLORS.muted}
+                placeholderTextColor={c.textMuted}
+                keyboardAppearance={c.dark ? 'dark' : 'light'}
                 style={[styles.input, styles.codeInput]}
                 keyboardType="number-pad"
                 autoComplete="one-time-code"
                 textContentType="oneTimeCode"
                 autoFocus
-                accessibilityLabel="6-digit code"
+                accessibilityLabel={t('more.auth.codeLabel')}
               />
               <Pressable
                 style={[styles.primaryBtn, (code.length !== 6 || !!busy) && styles.disabled]}
@@ -220,7 +236,7 @@ function SheetBody() {
                 onPress={() => void run('verify', () => auth.verifyEmailCode(email, code))}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: code.length !== 6 || !!busy, busy: busy === 'verify' }}>
-                {busy === 'verify' ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Continue</Text>}
+                {busy === 'verify' ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.primaryText}>{t('common.continue')}</Text>}
               </Pressable>
               {error && <Text style={styles.error} accessibilityLiveRegion="polite" accessibilityRole="alert">{error}</Text>}
               <Pressable
@@ -235,8 +251,12 @@ function SheetBody() {
                 style={styles.resendBtn}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: !!busy || resendIn > 0, busy: busy === 'resend' }}>
-                <Text style={[styles.linkCenter, (!!busy || resendIn > 0) && { color: COLORS.muted }]}>
-                  {busy === 'resend' ? 'Sending…' : resendIn > 0 ? `Send a new code in ${resendIn}s` : 'Send a new code'}
+                <Text style={[styles.linkCenter, (!!busy || resendIn > 0) && { color: c.textMuted }]}>
+                  {busy === 'resend'
+                    ? t('more.auth.sending')
+                    : resendIn > 0
+                      ? t('more.auth.resendIn', { n: resendIn })
+                      : t('more.auth.resend')}
                 </Text>
               </Pressable>
             </>
@@ -261,10 +281,13 @@ function ProfileStep({ prefsBike, prefsComfort }: { prefsBike?: string; prefsCom
   const hiddenAppleEmail = email.endsWith('@privaterelay.appleid.com');
   const phoneE164 = phone.trim() ? normalizePhone(phone) : null;
   const phoneInvalid = phone.trim().length > 0 && !phoneE164;
+  const { t } = useT();
+  const { c } = useTheme();
+  const styles = useStyles();
 
   const save = async () => {
     if (phoneInvalid) {
-      setError('That phone number doesn’t look right.');
+      setError(t('more.auth.phoneInvalid'));
       return;
     }
     setBusy(true);
@@ -281,7 +304,7 @@ function ProfileStep({ prefsBike, prefsComfort }: { prefsBike?: string; prefsCom
       });
       auth.closeSheet();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save. Please try again.');
+      setError(e instanceof Error ? e.message : t('more.auth.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -289,43 +312,50 @@ function ProfileStep({ prefsBike, prefsComfort }: { prefsBike?: string; prefsCom
 
   return (
     <>
-      <Text style={styles.h1} accessibilityRole="header">{auth.sheet?.mode === 'profile' ? 'Your profile' : 'You’re in! One last step'}</Text>
-      <Text style={styles.sub}>{email ? `Signed in as ${hiddenAppleEmail ? 'your private Apple email' : email}` : ''}</Text>
+      <Text style={styles.h1} accessibilityRole="header">{auth.sheet?.mode === 'profile' ? t('more.auth.yourProfile') : t('more.auth.youreIn')}</Text>
+      <Text style={styles.sub}>{email ? t('more.auth.signedInAs', { email: hiddenAppleEmail ? t('more.auth.privateApple') : email }) : ''}</Text>
 
-      <Text style={styles.label}>Name <Text style={styles.optional}>(optional)</Text></Text>
+      <Text style={styles.label}>
+        {t('more.auth.name')} <Text style={styles.optional}>{t('more.auth.optional')}</Text>
+      </Text>
       <TextInput
         value={name}
         onChangeText={setName}
-        placeholder="What should we call you?"
-        placeholderTextColor={COLORS.muted}
+        placeholder={t('more.auth.namePlaceholder')}
+        placeholderTextColor={c.textMuted}
+        keyboardAppearance={c.dark ? 'dark' : 'light'}
         style={styles.input}
         autoComplete="name"
         textContentType="name"
-        accessibilityLabel="Name, optional"
+        accessibilityLabel={t('more.auth.nameLabel')}
       />
 
-      <Text style={styles.label}>Mobile phone <Text style={styles.optional}>(optional)</Text></Text>
+      <Text style={styles.label}>
+        {t('more.auth.phone')} <Text style={styles.optional}>{t('more.auth.optional')}</Text>
+      </Text>
       <TextInput
         value={phone}
         onChangeText={setPhone}
         placeholder="(608) 555-0123"
-        placeholderTextColor={COLORS.muted}
-        style={[styles.input, phoneInvalid && { borderColor: '#dc2626' }]}
+        placeholderTextColor={c.textMuted}
+        keyboardAppearance={c.dark ? 'dark' : 'light'}
+        style={[styles.input, phoneInvalid && { borderColor: c.danger }]}
         keyboardType="phone-pad"
         autoComplete="tel"
         textContentType="telephoneNumber"
-        accessibilityLabel="Mobile phone, optional"
+        accessibilityLabel={t('more.auth.phoneLabel')}
       />
 
       <View style={styles.optRow}>
         <Switch
           value={emailOptIn}
           onValueChange={setEmailOptIn}
-          trackColor={{ true: COLORS.brand }}
-          accessibilityLabel="Email me news and offers"
+          trackColor={{ true: c.primary, false: c.border }}
+          thumbColor={Platform.OS === 'android' ? (emailOptIn ? c.onPrimary : c.surfaceAlt) : undefined}
+          accessibilityLabel={t('more.auth.optInLabel')}
         />
         <Text style={styles.optText} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-          Email me Ride Madison news, events and local rider offers.
+          {t('more.auth.optInText')}
         </Text>
       </View>
 
@@ -336,61 +366,61 @@ function ProfileStep({ prefsBike, prefsComfort }: { prefsBike?: string; prefsCom
         onPress={() => void save()}
         accessibilityRole="button"
         accessibilityState={{ disabled: busy, busy }}>
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Save</Text>}
+        {busy ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.primaryText}>{t('common.save')}</Text>}
       </Pressable>
       <Pressable
         style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
         disabled={busy}
         onPress={auth.closeSheet}
         accessibilityRole="button">
-        <Text style={styles.secondaryText}>{auth.sheet?.mode === 'profile' ? 'Cancel' : 'Skip'}</Text>
+        <Text style={styles.secondaryText}>{auth.sheet?.mode === 'profile' ? t('common.cancel') : t('more.auth.skip')}</Text>
       </Pressable>
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+const useStyles = makeStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 4, minHeight: 48 },
   topBtn: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
-  later: { fontSize: 16, color: COLORS.text, fontWeight: '600' },
+  later: { fontSize: 16, color: c.text, fontWeight: '600' },
   content: { padding: 24, paddingTop: 8 },
   logo: { marginBottom: 18 },
   titleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  h1: { fontSize: 28, fontFamily: FONT.black, color: COLORS.text },
-  sub: { fontSize: 16, color: COLORS.muted, marginTop: 8, lineHeight: 22 },
+  h1: { fontSize: 28, fontFamily: FONT.black, color: c.text },
+  sub: { fontSize: 16, color: c.textMuted, marginTop: 8, lineHeight: 22 },
   buttons: { marginTop: 28, gap: 12 },
   appleWrap: { justifyContent: 'center' },
   appleBtn: { height: 50, width: '100%' },
   appleSpinner: { position: 'absolute', right: 16 },
   providerBtn: {
-    minHeight: 50, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border, flexDirection: 'row',
+    minHeight: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.border, flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center', gap: 10,
   },
-  providerText: { fontSize: 17, fontFamily: FONT.bold, color: COLORS.text },
-  pressed: { backgroundColor: '#f3f4f6' },
+  providerText: { fontSize: 17, fontFamily: FONT.bold, color: c.text },
+  pressed: { backgroundColor: c.pressed },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 },
-  rule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border },
-  or: { color: COLORS.muted, fontSize: 14 },
-  label: { fontSize: 14, fontFamily: FONT.bold, color: COLORS.text, marginTop: 20, marginBottom: 6 },
-  optional: { fontWeight: '400', color: COLORS.muted },
+  rule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.border },
+  or: { color: c.textMuted, fontSize: 14 },
+  label: { fontSize: 14, fontFamily: FONT.bold, color: c.text, marginTop: 20, marginBottom: 6 },
+  optional: { fontWeight: '400', color: c.textMuted },
   input: {
-    minHeight: 50, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 14, fontSize: 17, color: COLORS.text,
+    minHeight: 50, borderWidth: 1.5, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14, fontSize: 17, color: c.text,
   },
   codeInput: { marginTop: 24, fontSize: 28, letterSpacing: 10, textAlign: 'center', minHeight: 60, marginBottom: 12 },
-  primaryBtn: { minHeight: 50, borderRadius: 12, backgroundColor: COLORS.brand, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#fff', fontSize: 17, fontFamily: FONT.black },
+  primaryBtn: { minHeight: 50, borderRadius: 12, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
+  primaryText: { color: c.onPrimary, fontSize: 17, fontFamily: FONT.black },
   secondaryBtn: {
-    minHeight: 50, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.brand, alignItems: 'center', justifyContent: 'center',
+    minHeight: 50, borderRadius: 12, borderWidth: 1.5, borderColor: c.primary, alignItems: 'center', justifyContent: 'center',
     marginTop: 12, paddingHorizontal: 16, paddingVertical: 10,
   },
-  secondaryText: { color: COLORS.brand, fontSize: 17, fontFamily: FONT.bold, textAlign: 'center' },
+  secondaryText: { color: c.primary, fontSize: 17, fontFamily: FONT.bold, textAlign: 'center' },
   resendBtn: { marginTop: 12, minHeight: 44, justifyContent: 'center' },
   disabled: { opacity: 0.45 },
-  error: { color: BRAND.red, fontSize: 14, marginTop: 12, fontWeight: '600' },
-  legal: { fontSize: 13, color: COLORS.muted, marginTop: 20, lineHeight: 18 },
-  link: { color: COLORS.brand, textDecorationLine: 'underline' },
-  linkCenter: { color: COLORS.brand, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  error: { color: c.danger, fontSize: 14, marginTop: 12, fontWeight: '600' },
+  legal: { fontSize: 13, color: c.textMuted, marginTop: 20, lineHeight: 18 },
+  link: { color: c.primary, textDecorationLine: 'underline' },
+  linkCenter: { color: c.primary, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   optRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 },
-  optText: { flex: 1, fontSize: 14, color: COLORS.text, lineHeight: 19 },
-});
+  optText: { flex: 1, fontSize: 14, color: c.text, lineHeight: 19 },
+}));

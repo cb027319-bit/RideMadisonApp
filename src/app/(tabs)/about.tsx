@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { getLocales } from 'expo-localization';
 import { useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -7,64 +8,73 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { HorizontalLogo } from '@/components/brand';
 import { RideStats } from '@/components/ride-stats';
 import { useRideLog } from '@/lib/ridelog';
-import { TAGLINE } from '@/components/launch-screen';
 import { Onboarding } from '@/components/onboarding';
 import { useAuth } from '@/lib/auth';
 import { BRAND, COLORS, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
+import { locale, useT, type LangPref } from '@/lib/i18n';
 import { PATH_META, PLACE_META } from '@/lib/labels';
 import { prefsSummary, usePrefs } from '@/lib/prefs';
+import { makeStyles, useTheme, type AppearancePref } from '@/lib/theme';
 import { TRAIL_PASS_URL } from '@/lib/trails';
+import type { Key } from '@/locales';
 
 const PRIVACY_URL = 'https://ridemadison.com/privacy';
 const TERMS_URL = 'https://ridemadison.com/terms';
 const PARTNERS_EMAIL = 'mailto:partners@ridemadison.com?subject=Advertising%20on%20Ride%20Madison';
 
-const COLLECTED: string[] = [
-  'With an account: your email, your name, and a phone number if you add one',
-  'Your saved rides and ride stats',
-  'Your riding style (bike type and traffic comfort)',
-  'Taps on local business listings, linked to your account when you’re signed in',
+const COLLECTED: Key[] = ['more.collectAccount', 'more.collectRides', 'more.collectStyle', 'more.collectTaps'];
+
+const GUIDES: { title: Key; body: Key; link?: { label: Key; url: string } }[] = [
+  {
+    title: 'more.guidePassTitle',
+    body: 'more.guidePassBody',
+    link: { label: 'more.guidePassLink', url: TRAIL_PASS_URL },
+  },
+  {
+    title: 'more.guideEbikeTitle',
+    body: 'more.guideEbikeBody',
+    link: { label: 'more.guideEbikeLink', url: 'https://dnr.wisconsin.gov/topic/parks/recreation/biking' },
+  },
+  {
+    title: 'more.guideBcycleTitle',
+    body: 'more.guideBcycleBody',
+    link: { label: 'more.guideBcycleLink', url: 'https://madison.bcycle.com' },
+  },
 ];
 
-const GUIDES: { title: string; body: string; link?: { label: string; url: string } }[] = [
-  {
-    title: 'Do I need a trail pass?',
-    body:
-      'Wisconsin state trails such as the Military Ridge, Badger and Glacial Drumlin require a state trail pass to bike if you are 16 or older: $5 for a day or $25 for the year. On the Capital City State Trail the pass applies only to the 9 miles between Verona Rd and Nob Hill Rd. City paths like the Southwest Commuter Path are free. Walking never needs a pass. Tap any trail on the map to see its rules.',
-    link: { label: 'Buy a pass from the WI DNR', url: TRAIL_PASS_URL },
-  },
-  {
-    title: 'E-bikes on trails',
-    body:
-      'Wisconsin has three e-bike classes. On most DNR state trails, Class 1 and Class 3 e-bikes are generally allowed at up to 15 mph, and Class 2 (throttle) e-bikes are not allowed under motor power. City and county paths can set their own rules, so check posted signs.',
-    link: { label: 'WI DNR biking page', url: 'https://dnr.wisconsin.gov/topic/parks/recreation/biking' },
-  },
-  {
-    title: 'Riding Madison BCycle',
-    body:
-      'BCycle is Madison’s bike share, and its fleet is electric-assist. Tap a BCycle station on the map to see how many bikes and open spots it has right now, then unlock a bike in the BCycle app and return it to any station with an open spot.',
-    link: { label: 'Madison BCycle', url: 'https://madison.bcycle.com' },
-  },
-];
+/** Language names are shown in their own language (not translated). */
+const LANG_NAMES = { en: 'English', es: 'Español' } as const;
+
+/** What "Automatic" resolves to on this phone (matches i18n: Spanish phones get Spanish, others English). */
+function phoneLanguageName(): string {
+  try {
+    return getLocales()[0]?.languageCode === 'es' ? LANG_NAMES.es : LANG_NAMES.en;
+  } catch {
+    return LANG_NAMES.en;
+  }
+}
 
 export default function AboutScreen() {
   const { refreshAll, paths, places, stations } = useData();
   const { prefs, setPrefs } = usePrefs();
   const auth = useAuth();
   const { logs } = useRideLog();
+  const { t, pref: langPref, setPref: setLangPref } = useT();
+  const { c, pref: themePref, setPref: setThemePref } = useTheme();
+  const styles = useStyles();
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [openGuide, setOpenGuide] = useState<number | null>(null);
 
   const confirmSignOut = () =>
-    Alert.alert('Sign out?', 'Your saved rides stay in your account. Sign in again to see them.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('more.signOutTitle'), t('more.signOutBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Sign out',
+        text: t('more.signOut'),
         onPress: () =>
-          void auth.signOut().then(() => AccessibilityInfo.announceForAccessibility('Signed out'), () => {}),
+          void auth.signOut().then(() => AccessibilityInfo.announceForAccessibility(t('more.signedOut')), () => {}),
       },
     ]);
 
@@ -73,9 +83,9 @@ export default function AboutScreen() {
     setDeleting(true);
     try {
       await auth.deleteAccount();
-      Alert.alert('Account deleted', 'Your account and saved rides were deleted.');
+      Alert.alert(t('more.deletedTitle'), t('more.deletedBody'));
     } catch (e) {
-      Alert.alert('Could not delete', e instanceof Error ? e.message : 'Please try again.');
+      Alert.alert(t('more.deleteFailed'), e instanceof Error ? e.message : t('more.pleaseTryAgain'));
     } finally {
       setDeleting(false);
     }
@@ -83,9 +93,9 @@ export default function AboutScreen() {
 
   const confirmDelete = () => {
     if (deleting) return;
-    Alert.alert('Delete your account?', 'This permanently deletes your profile, saved rides and ride stats. It cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void deleteNow() },
+    Alert.alert(t('more.deleteTitle'), t('more.deleteBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: () => void deleteNow() },
     ]);
   };
 
@@ -95,31 +105,39 @@ export default function AboutScreen() {
     setBusy(false);
   };
 
+  const langOptions: { value: LangPref; label: string }[] = [
+    { value: 'system', label: t('more.languageAuto', { lang: phoneLanguageName() }) },
+    { value: 'en', label: LANG_NAMES.en },
+    { value: 'es', label: LANG_NAMES.es },
+  ];
+  const themeOptions: { value: AppearancePref; label: string }[] = [
+    { value: 'system', label: t('more.appearanceAuto') },
+    { value: 'light', label: t('more.appearanceLight') },
+    { value: 'dark', label: t('more.appearanceDark') },
+  ];
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <HorizontalLogo height={46} />
-        <Text style={styles.heroTag}>{TAGLINE}</Text>
+        <Text style={styles.heroTag}>{t('more.tagline')}</Text>
       </View>
-      <Text style={styles.p}>
-        Bike paths, live BCycle e-bikes, bike shops, fix-it stations and parking for Madison and nearby
-        communities, in one free app.
-      </Text>
+      <Text style={styles.p}>{t('more.intro')}</Text>
 
       {auth.configured && (
         <>
-          <Text style={styles.h2} accessibilityRole="header">Account</Text>
+          <Text style={styles.h2} accessibilityRole="header">{t('more.account')}</Text>
           {auth.session ? (
             <View style={styles.accountBox}>
               <View style={styles.accountHead}>
-                <Text style={styles.prefsText}>{auth.profile?.full_name || 'Rider'}</Text>
+                <Text style={styles.prefsText}>{auth.profile?.full_name || t('more.rider')}</Text>
                 <Text style={styles.prefsHint}>{auth.session.user.email}</Text>
               </View>
-              <ActionRow icon="person-outline" label="Edit profile" onPress={() => auth.openSheet('profile')} disabled={deleting} />
-              <ActionRow icon="log-out-outline" label="Sign out" onPress={confirmSignOut} disabled={deleting} />
+              <ActionRow icon="person-outline" label={t('more.editProfile')} onPress={() => auth.openSheet('profile')} disabled={deleting} />
+              <ActionRow icon="log-out-outline" label={t('more.signOut')} onPress={confirmSignOut} disabled={deleting} />
               <ActionRow
                 icon="trash-outline"
-                label={deleting ? 'Deleting your account…' : 'Delete account'}
+                label={deleting ? t('more.deleting') : t('more.deleteAccount')}
                 onPress={confirmDelete}
                 disabled={deleting}
                 busy={deleting}
@@ -128,36 +146,41 @@ export default function AboutScreen() {
             </View>
           ) : (
             <Pressable style={styles.signInBtn} onPress={() => auth.openSheet('gate')} accessibilityRole="button">
-              <Text style={styles.buttonText}>Sign in or create a free account</Text>
+              <Text style={styles.buttonText}>{t('more.signInCta')}</Text>
             </Pressable>
           )}
         </>
       )}
 
-      <Text style={styles.h2} accessibilityRole="header">Your stats</Text>
+      <Text style={styles.h2} accessibilityRole="header">{t('more.yourStats')}</Text>
       {auth.session || !auth.configured ? (
         <RideStats logs={logs} />
       ) : (
         <Pressable style={styles.statsTeaser} onPress={() => auth.openSheet('gate')} accessibilityRole="button">
-          <Text style={styles.prefsText}>Track your miles and earn badges</Text>
+          <Text style={styles.prefsText}>{t('more.statsTeaserTitle')}</Text>
           <Text style={styles.prefsHint}>
-            {logs.length
-              ? `${logs.length} ${logs.length === 1 ? 'ride' : 'rides'} saved on this phone. Create a free account to keep them and see your stats.`
-              : 'Create a free account to see miles, average speed and badges for every ride.'}
+            {logs.length ? t('more.statsTeaserSaved', { count: logs.length }) : t('more.statsTeaserEmpty')}
           </Text>
         </Pressable>
       )}
 
-      <Text style={styles.h2} accessibilityRole="header">Your riding</Text>
-      <Pressable style={styles.prefsRow} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityHint="Change your bike and traffic comfort">
+      <Text style={styles.h2} accessibilityRole="header">{t('more.yourRiding')}</Text>
+      <Pressable style={styles.prefsRow} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityHint={t('more.ridingHint')}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.prefsText}>{prefsSummary(prefs)}</Text>
-          <Text style={styles.prefsHint}>Sets your default route style</Text>
+          <Text style={styles.prefsText}>{prefsSummary(prefs, t)}</Text>
+          <Text style={styles.prefsHint}>{t('more.ridingSub')}</Text>
         </View>
-        <Text style={styles.link}>Change</Text>
+        <Text style={styles.link}>{t('more.change')}</Text>
       </Pressable>
 
-      <Text style={styles.h2} accessibilityRole="header">Rider guides</Text>
+      <Text style={styles.settingLabel}>{t('more.language')}</Text>
+      <Segmented label={t('more.language')} value={langPref} options={langOptions} onChange={setLangPref} />
+
+      <Text style={styles.settingLabel}>{t('more.appearance')}</Text>
+      <Segmented label={t('more.appearance')} value={themePref} options={themeOptions} onChange={setThemePref} />
+      <Text style={styles.prefsHint}>{t('more.appearanceHint')}</Text>
+
+      <Text style={styles.h2} accessibilityRole="header">{t('more.guides')}</Text>
       {GUIDES.map((g, i) => (
         <View key={g.title} style={styles.guide}>
           <Pressable
@@ -165,15 +188,15 @@ export default function AboutScreen() {
             onPress={() => setOpenGuide(openGuide === i ? null : i)}
             accessibilityRole="button"
             accessibilityState={{ expanded: openGuide === i }}>
-            <Text style={styles.guideTitle}>{g.title}</Text>
-            <Ionicons name={openGuide === i ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.muted} />
+            <Text style={styles.guideTitle}>{t(g.title)}</Text>
+            <Ionicons name={openGuide === i ? 'chevron-up' : 'chevron-down'} size={18} color={c.textMuted} />
           </Pressable>
           {openGuide === i && (
             <View style={{ paddingBottom: 12 }}>
-              <Text style={styles.p}>{g.body}</Text>
+              <Text style={styles.p}>{t(g.body)}</Text>
               {g.link && (
                 <Text style={[styles.link, { marginTop: 8 }]} accessibilityRole="link" onPress={() => Linking.openURL(g.link!.url)}>
-                  {g.link.label}
+                  {t(g.link.label)}
                 </Text>
               )}
             </View>
@@ -181,7 +204,7 @@ export default function AboutScreen() {
         </View>
       ))}
 
-      <Text style={styles.h2} accessibilityRole="header">Map key</Text>
+      <Text style={styles.h2} accessibilityRole="header">{t('more.mapKey')}</Text>
       {Object.entries(PATH_META).map(([k, m]) => (
         <View key={k} style={styles.legendRow}>
           <View style={[styles.line, { backgroundColor: m.color }, k === 'path_unpaved' && styles.dashed]} />
@@ -190,7 +213,7 @@ export default function AboutScreen() {
       ))}
       <View style={styles.legendRow}>
         <View style={[styles.dot, { backgroundColor: COLORS.bcycle }]} />
-        <Text style={styles.legendText}>BCycle station (grey = no bikes right now)</Text>
+        <Text style={styles.legendText}>{t('more.keyBcycle')}</Text>
       </View>
       {Object.entries(PLACE_META).map(([k, m]) => (
         <View key={k} style={styles.legendRow}>
@@ -199,46 +222,45 @@ export default function AboutScreen() {
         </View>
       ))}
 
-      <Text style={styles.h2} accessibilityRole="header">Data</Text>
+      <Text style={styles.h2} accessibilityRole="header">{t('more.data')}</Text>
       <Text style={styles.p}>
-        Loaded: {paths.length.toLocaleString()} path segments, {places.length.toLocaleString()} places,{' '}
-        {stations.length} BCycle stations. Paths and places are saved on your phone for offline use and refresh weekly.
+        {t('more.dataLoaded', {
+          paths: paths.length.toLocaleString(locale()),
+          places: places.length.toLocaleString(locale()),
+          stations: stations.length.toLocaleString(locale()),
+        })}
       </Text>
       <Pressable style={styles.button} onPress={refresh} disabled={busy} accessibilityRole="button">
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Refresh map data now</Text>}
+        {busy ? <ActivityIndicator color={c.onPrimary} /> : <Text style={styles.buttonText}>{t('more.refresh')}</Text>}
       </Pressable>
 
-      <Text style={styles.h2} accessibilityRole="header">Privacy & your data</Text>
-      <Text style={styles.p}>The map, directions and Nearby work without an account. What Ride Madison keeps:</Text>
-      {COLLECTED.map((c) => (
-        <View key={c} style={styles.bullet}>
+      <Text style={styles.h2} accessibilityRole="header">{t('more.privacy')}</Text>
+      <Text style={styles.p}>{t('more.privacyIntro')}</Text>
+      {COLLECTED.map((k) => (
+        <View key={k} style={styles.bullet}>
           <Text style={styles.bulletDot} importantForAccessibility="no" accessibilityElementsHidden>•</Text>
-          <Text style={styles.bulletText}>{c}</Text>
+          <Text style={styles.bulletText}>{t(k)}</Text>
         </View>
       ))}
-      <Text style={styles.p}>
-        Your location stays on your phone, except the points needed to plan a route (sent to the BRouter routing
-        service, brouter.de) and to search for places near you (Photon search, photon.komoot.io). We never sell your data.
-      </Text>
-      <LinkRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => void Linking.openURL(PRIVACY_URL)} />
-      <LinkRow icon="document-text-outline" label="Terms of Use" onPress={() => void Linking.openURL(TERMS_URL)} />
+      <Text style={styles.p}>{t('more.privacyLocation')}</Text>
+      <LinkRow icon="shield-checkmark-outline" label={t('more.privacyPolicy')} onPress={() => void Linking.openURL(PRIVACY_URL)} />
+      <LinkRow icon="document-text-outline" label={t('more.terms')} onPress={() => void Linking.openURL(TERMS_URL)} />
 
-      <Text style={styles.h2} accessibilityRole="header">For local businesses</Text>
+      <Text style={styles.h2} accessibilityRole="header">{t('more.business')}</Text>
       <LinkRow
         icon="storefront-outline"
-        label="Advertise on Ride Madison"
-        hint="Email partners@ridemadison.com"
+        label={t('more.advertise')}
+        hint={t('more.advertiseHint')}
         onPress={() => void Linking.openURL(PARTNERS_EMAIL)}
       />
 
-      <Text style={styles.h2} accessibilityRole="header">Sources</Text>
+      <Text style={styles.h2} accessibilityRole="header">{t('more.sources')}</Text>
       <Text style={styles.p}>
-        Map data ©{' '}
+        {t('more.sourcesMapData')}{' '}
         <Text style={styles.link} accessibilityRole="link" onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>
-          OpenStreetMap contributors
+          {t('more.sourcesOsm')}
         </Text>{' '}
-        (ODbL). Live station data from Madison BCycle&apos;s public GBFS feed. Ride Madison is not affiliated with
-        BCycle or the City of Madison. Always follow posted signs and trail rules.
+        {t('more.sourcesRest')}
       </Text>
 
       <Onboarding
@@ -250,22 +272,51 @@ export default function AboutScreen() {
           setPrefs(p);
           setEditing(false);
           if (auth.session) void auth.updateProfile({ bike_type: p.bike, comfort: p.comfort }).catch(() => {});
-          AccessibilityInfo.announceForAccessibility('Your riding is saved');
+          AccessibilityInfo.announceForAccessibility(t('more.ridingSaved'));
         }}
         onSkip={() => setEditing(false)}
       />
 
-      <Text style={styles.version}>Version {Constants.expoConfig?.version ?? '0.1.0'}</Text>
+      <Text style={styles.version}>{t('more.version', { v: Constants.expoConfig?.version ?? '0.1.0' })}</Text>
     </ScrollView>
   );
 }
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
+/** Three-way choice (radio group) with 44pt+ targets. */
+function Segmented<T extends string>({ label, value, options, onChange }: {
+  label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
+}) {
+  const styles = useStyles();
+  return (
+    <View style={styles.segment} accessibilityRole="radiogroup" accessibilityLabel={label}>
+      {options.map((o, i) => {
+        const on = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            style={({ pressed }) => [styles.segBtn, i > 0 && styles.segDivider, on && styles.segOn, pressed && !on && styles.pressed]}
+            accessibilityRole="radio"
+            accessibilityLabel={o.label}
+            accessibilityState={{ selected: on, checked: on }}>
+            <Text style={[styles.segText, on && styles.segTextOn]} numberOfLines={2}>
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function ActionRow({ icon, label, onPress, disabled, busy, danger }: {
   icon: IconName; label: string; onPress: () => void; disabled?: boolean; busy?: boolean; danger?: boolean;
 }) {
-  const color = danger ? DANGER : COLORS.text;
+  const { c } = useTheme();
+  const styles = useStyles();
+  const color = danger ? c.danger : c.text;
   return (
     <Pressable
       onPress={onPress}
@@ -280,69 +331,82 @@ function ActionRow({ icon, label, onPress, disabled, busy, danger }: {
 }
 
 function LinkRow({ icon, label, hint, onPress }: { icon: IconName; label: string; hint?: string; onPress: () => void }) {
+  const { c } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
       accessibilityRole="link"
       accessibilityHint={hint}>
-      <Ionicons name={icon} size={20} color={COLORS.brand} />
+      <Ionicons name={icon} size={20} color={c.primary} />
       <View style={{ flex: 1 }}>
         <Text style={styles.actionText}>{label}</Text>
         {hint && <Text style={styles.prefsHint}>{hint}</Text>}
       </View>
-      <Ionicons name="open-outline" size={18} color={COLORS.muted} />
+      <Ionicons name="open-outline" size={18} color={c.textMuted} />
     </Pressable>
   );
 }
 
-/** Dark red for destructive actions (passes 4.5:1 on white). */
-const DANGER = '#B91C1C';
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: BRAND.cream },
+const useStyles = makeStyles((c) => ({
+  container: { flex: 1, backgroundColor: c.bg },
   content: { padding: 20, paddingBottom: 40 },
-  hero: { backgroundColor: BRAND.navy, borderRadius: 20, padding: 20, gap: 10, marginBottom: 8 },
+  // The brand hero stays navy in both modes (a border lifts it off the dark background).
+  hero: {
+    backgroundColor: BRAND.navy, borderRadius: 20, padding: 20, gap: 10, marginBottom: 8,
+    borderWidth: c.dark ? 1 : 0, borderColor: c.border,
+  },
   heroTag: { color: BRAND.limestone, fontSize: 14, fontFamily: FONT.medium },
-  h2: { fontSize: 18, fontFamily: FONT.black, color: COLORS.text, marginTop: 24, marginBottom: 8 },
-  p: { fontSize: 15, lineHeight: 22, color: COLORS.text, marginTop: 6 },
+  h2: { fontSize: 18, fontFamily: FONT.black, color: c.text, marginTop: 24, marginBottom: 8 },
+  p: { fontSize: 15, lineHeight: 22, color: c.text, marginTop: 6 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   line: { width: 28, height: 4, borderRadius: 2 },
   dashed: { opacity: 0.7 },
-  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: '#fff' },
-  legendText: { fontSize: 14, color: COLORS.text, flex: 1 },
+  // Light ring in dark mode so dark pin colours (navy BCycle) stay visible.
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: c.dark ? c.textMuted : c.surface },
+  legendText: { fontSize: 14, color: c.text, flex: 1 },
   button: {
-    marginTop: 12, backgroundColor: COLORS.brand, borderRadius: 10,
+    marginTop: 12, backgroundColor: c.primary, borderRadius: 10,
     paddingVertical: 12, minHeight: 48, alignItems: 'center', justifyContent: 'center',
   },
-  buttonText: { color: '#fff', fontSize: 15, fontFamily: FONT.black },
-  link: { color: COLORS.brand, textDecorationLine: 'underline', fontWeight: '600' },
-  accountBox: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: '#fff', overflow: 'hidden' },
+  buttonText: { color: c.onPrimary, fontSize: 15, fontFamily: FONT.black },
+  link: { color: c.primary, textDecorationLine: 'underline', fontWeight: '600' },
+  accountBox: { borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surface, overflow: 'hidden' },
   accountHead: { padding: 14 },
   actionRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, paddingHorizontal: 14, paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border,
   },
   dangerRow: { marginTop: 12, borderTopWidth: 1 },
-  actionText: { fontSize: 16, fontFamily: FONT.bold, color: COLORS.text, flexShrink: 1 },
-  pressed: { backgroundColor: BRAND.limestone },
+  actionText: { fontSize: 16, fontFamily: FONT.bold, color: c.text, flexShrink: 1 },
+  pressed: { backgroundColor: c.pressed },
   linkRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginTop: 8,
+    backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border, marginTop: 8,
   },
   bullet: { flexDirection: 'row', gap: 8, marginTop: 6, paddingRight: 8 },
-  bulletDot: { fontSize: 15, lineHeight: 22, color: COLORS.text },
-  bulletText: { fontSize: 15, lineHeight: 22, color: COLORS.text, flex: 1 },
-  statsTeaser: { backgroundColor: '#fff', borderRadius: 14, padding: 14, gap: 4 },
-  signInBtn: { backgroundColor: COLORS.brand, borderRadius: 10, paddingVertical: 12, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  bulletDot: { fontSize: 15, lineHeight: 22, color: c.text },
+  bulletText: { fontSize: 15, lineHeight: 22, color: c.text, flex: 1 },
+  statsTeaser: { backgroundColor: c.surface, borderRadius: 14, padding: 14, gap: 4 },
+  signInBtn: { backgroundColor: c.primary, borderRadius: 10, paddingVertical: 12, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   prefsRow: {
-    flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14,
-    backgroundColor: '#fff',
+    flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14,
+    backgroundColor: c.surface,
   },
-  prefsText: { fontSize: 15, fontFamily: FONT.bold, color: COLORS.text },
-  prefsHint: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
-  guide: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+  prefsText: { fontSize: 15, fontFamily: FONT.bold, color: c.text },
+  prefsHint: { fontSize: 14, color: c.textMuted, marginTop: 2 },
+  settingLabel: { fontSize: 15, fontFamily: FONT.bold, color: c.text, marginTop: 18, marginBottom: 8 },
+  segment: {
+    flexDirection: 'row', borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surface, overflow: 'hidden',
+  },
+  segBtn: { flex: 1, minHeight: 48, paddingHorizontal: 6, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+  segDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: c.border },
+  segOn: { backgroundColor: c.primary },
+  segText: { fontSize: 14, fontFamily: FONT.bold, color: c.text, textAlign: 'center' },
+  segTextOn: { color: c.onPrimary },
+  guide: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
   guideHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
-  guideTitle: { fontSize: 16, fontFamily: FONT.bold, color: COLORS.text, flex: 1 },
-  version: { marginTop: 28, fontSize: 12, color: COLORS.muted, textAlign: 'center' },
-});
+  guideTitle: { fontSize: 16, fontFamily: FONT.bold, color: c.text, flex: 1 },
+  version: { marginTop: 28, fontSize: 12, color: c.textMuted, textAlign: 'center' },
+}));

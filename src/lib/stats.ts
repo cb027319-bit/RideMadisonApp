@@ -1,6 +1,8 @@
 // Ride stats and badges (gamification). Pure functions over the rider's ride
 // log so they can be unit-tested and computed anywhere.
 
+import type { Key } from '../locales';
+import { englishT, type Tr } from './rider';
 import { SUGGESTED_RIDES } from './suggested';
 
 const MI = 1609.344;
@@ -96,6 +98,10 @@ export type BadgeIcon =
 
 export interface Badge {
   id: string;
+  /** Translation keys; UI shows t(nameKey) / t(descKey). */
+  nameKey: Key;
+  descKey: Key;
+  /** English name and description (see localizeBadge for the rider's language). */
   name: string;
   description: string;
   icon: BadgeIcon;
@@ -108,27 +114,38 @@ const hourOf = (t: number) => new Date(t).getHours();
 const longest = (logs: RideLog[]) => logs.reduce((m, l) => Math.max(m, l.distanceM), 0) / MI;
 const didRide = (logs: RideLog[], id: string) => logs.some((l) => suggestedIdOf(l) === id);
 
+const named = (id: string, k: string) => {
+  const nameKey = `more.badge.${k}` as Key;
+  const descKey = `more.badge.${k}Desc` as Key;
+  return { id, nameKey, descKey, name: englishT(nameKey), description: englishT(descKey) };
+};
+
 export const BADGES: Badge[] = [
-  { id: 'first-ride', name: 'First Ride', description: 'Finish your first ride with Ride Madison', icon: 'flag', progress: (s) => ratio(s.rides, 1) },
-  { id: 'ten-rides', name: 'Regular', description: 'Finish 10 rides', icon: 'bicycle', progress: (s) => ratio(s.rides, 10) },
-  { id: 'fifty-rides', name: 'Habit Formed', description: 'Finish 50 rides', icon: 'star', progress: (s) => ratio(s.rides, 50) },
-  { id: 'miles-25', name: '25 Miles', description: 'Ride 25 miles in total', icon: 'ribbon', progress: (s) => ratio(s.miles, 25) },
-  { id: 'miles-100', name: 'Century Club', description: 'Ride 100 miles in total', icon: 'medal', progress: (s) => ratio(s.miles, 100) },
-  { id: 'miles-500', name: '500 Miles', description: 'Ride 500 miles in total', icon: 'trophy', progress: (s) => ratio(s.miles, 500) },
-  { id: 'ride-10', name: 'Double Digits', description: 'Ride 10 miles in one go', icon: 'speedometer', progress: (_s, l) => ratio(longest(l), 10) },
-  { id: 'ride-25', name: 'Long Haul', description: 'Ride 25 miles in one go', icon: 'trending-up', progress: (_s, l) => ratio(longest(l), 25) },
-  { id: 'climb-1000', name: 'Hill Seeker', description: 'Climb 1,000 ft in total', icon: 'trending-up', progress: (s) => ratio(s.climbFt, 1000) },
-  { id: 'streak-4', name: 'Four-Week Streak', description: 'Ride at least once a week for 4 weeks in a row', icon: 'flame', progress: (s) => ratio(s.weekStreak, 4) },
-  { id: 'early-bird', name: 'Early Bird', description: 'Start a ride before 7 am', icon: 'sunny', progress: (_s, l) => (l.some((x) => hourOf(x.startedAt) < 7 && hourOf(x.startedAt) >= 4) ? 1 : 0) },
-  { id: 'night-owl', name: 'Night Owl', description: 'Start a ride after 8 pm', icon: 'moon', progress: (_s, l) => (l.some((x) => hourOf(x.startedAt) >= 20) ? 1 : 0) },
-  { id: 'monona', name: 'Lake Monona Loop', description: 'Ride the Lake Monona Loop', icon: 'water', progress: (_s, l) => (didRide(l, 'monona-loop') ? 1 : 0) },
-  { id: 'explorer', name: 'Explorer', description: 'Ride 5 different suggested rides', icon: 'map', progress: (s) => ratio(s.suggestedDone, 5) },
-  { id: 'green-50', name: 'Car-Free Champ', description: 'Save about 20 kg of CO2 (50 miles not driven)', icon: 'leaf', progress: (s) => ratio(s.miles, 50) },
+  { ...named('first-ride', 'firstRide'), icon: 'flag', progress: (s) => ratio(s.rides, 1) },
+  { ...named('ten-rides', 'tenRides'), icon: 'bicycle', progress: (s) => ratio(s.rides, 10) },
+  { ...named('fifty-rides', 'fiftyRides'), icon: 'star', progress: (s) => ratio(s.rides, 50) },
+  { ...named('miles-25', 'miles25'), icon: 'ribbon', progress: (s) => ratio(s.miles, 25) },
+  { ...named('miles-100', 'miles100'), icon: 'medal', progress: (s) => ratio(s.miles, 100) },
+  { ...named('miles-500', 'miles500'), icon: 'trophy', progress: (s) => ratio(s.miles, 500) },
+  { ...named('ride-10', 'ride10'), icon: 'speedometer', progress: (_s, l) => ratio(longest(l), 10) },
+  { ...named('ride-25', 'ride25'), icon: 'trending-up', progress: (_s, l) => ratio(longest(l), 25) },
+  { ...named('climb-1000', 'climb1000'), icon: 'trending-up', progress: (s) => ratio(s.climbFt, 1000) },
+  { ...named('streak-4', 'streak4'), icon: 'flame', progress: (s) => ratio(s.weekStreak, 4) },
+  { ...named('early-bird', 'earlyBird'), icon: 'sunny', progress: (_s, l) => (l.some((x) => hourOf(x.startedAt) < 7 && hourOf(x.startedAt) >= 4) ? 1 : 0) },
+  { ...named('night-owl', 'nightOwl'), icon: 'moon', progress: (_s, l) => (l.some((x) => hourOf(x.startedAt) >= 20) ? 1 : 0) },
+  { ...named('monona', 'monona'), icon: 'water', progress: (_s, l) => (didRide(l, 'monona-loop') ? 1 : 0) },
+  { ...named('explorer', 'explorer'), icon: 'map', progress: (s) => ratio(s.suggestedDone, 5) },
+  { ...named('green-50', 'green50'), icon: 'leaf', progress: (s) => ratio(s.miles, 50) },
 ];
 
 export function badgeProgress(logs: RideLog[], now = Date.now()) {
   const s = summarize(logs, now);
   return BADGES.map((b) => ({ ...b, value: b.progress(s, logs), earned: b.progress(s, logs) >= 1 }));
+}
+
+/** The badge with its name and description in the rider's language. */
+export function localizeBadge<B extends Badge>(b: B, t: Tr): B {
+  return { ...b, name: t(b.nameKey), description: t(b.descKey) };
 }
 
 /** Badges earned by `after` that weren't earned by `before` (for the "New badge!" moment). */
