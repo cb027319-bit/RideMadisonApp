@@ -6,14 +6,33 @@ export const PLACE_META: Record<PlaceKind, { label: string; plural: string; colo
   repair: { label: 'Fix-it station', plural: 'Fix-it stations', color: COLORS.repair, icon: 'construct', fallbackName: 'Fix-it station' },
   parking: { label: 'Bike parking', plural: 'Bike parking', color: COLORS.parking, icon: 'lock-closed', fallbackName: 'Bike parking' },
   water: { label: 'Drinking water', plural: 'Water', color: COLORS.water, icon: 'water', fallbackName: 'Drinking water' },
-  food: { label: 'Food', plural: 'Restaurants', color: COLORS.food, icon: 'restaurant', fallbackName: 'Restaurant' },
-  drink: { label: 'Drinks', plural: 'Bars', color: COLORS.drink, icon: 'beer', fallbackName: 'Bar' },
+  restroom: { label: 'Restroom', plural: 'Restrooms', color: COLORS.restroom, icon: 'male-female', fallbackName: 'Restroom' },
+  playground: { label: 'Playground', plural: 'Playgrounds', color: COLORS.playground, icon: 'happy', fallbackName: 'Playground' },
+  food: { label: 'Eat', plural: 'Eat', color: COLORS.food, icon: 'restaurant', fallbackName: 'Place to eat' },
+  drink: { label: 'Drink', plural: 'Drink', color: COLORS.drink, icon: 'beer', fallbackName: 'Place to drink' },
 };
 
 export const PATH_META: Record<PathKind, { label: string; color: string }> = {
-  path_paved: { label: 'Paved bike path', color: COLORS.pathPaved },
+  path_paved: { label: 'Car-free paved path', color: COLORS.pathPaved },
   path_unpaved: { label: 'Unpaved trail', color: COLORS.pathUnpaved },
   lane: { label: 'On-street bike lane', color: COLORS.lane },
+};
+
+/** How each kind of line is drawn on the map (shared by the map and the map key). */
+export interface LineStyle {
+  color: string;
+  width: number;
+  dash?: number[];
+}
+
+export const LINE_STYLE: Record<PathKind | 'hiking' | 'parkUnknown', LineStyle> = {
+  path_paved: { color: COLORS.pathPaved, width: 4 },
+  path_unpaved: { color: COLORS.pathUnpaved, width: 4, dash: [7, 4] },
+  lane: { color: COLORS.lane, width: 2 },
+  /** Park paths where bikes aren't allowed: thin grey dots. */
+  hiking: { color: COLORS.hiking, width: 2, dash: [1, 5] },
+  /** Park paths with no bike rule mapped: thin grey dashes. */
+  parkUnknown: { color: COLORS.hiking, width: 2.5, dash: [6, 4] },
 };
 
 export function timeAgo(ms: number): string {

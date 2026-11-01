@@ -19,50 +19,102 @@ export interface Trail {
   rules?: TrailRules;
 }
 
+export type PassVerdict = 'free' | 'part' | 'pass';
+export type EbikeClass = '1' | '2' | '3';
+
 export interface TrailRules {
   /** Short badge, e.g. "State trail pass". */
   badge: string;
+  /** One-word answer to "do I need a pass?". */
+  verdict: PassVerdict;
   pass: string;
+  /** E-bike rule for riders who haven't told us their class. */
   ebikes: string;
+  /** E-bike rule for a known class. */
+  ebikeByClass: Record<EbikeClass, string>;
   manager: string;
   url: string;
+  /** Rough area where the pass applies, for a map highlight (only where part of a trail is paid). */
+  paidSection?: { minLon: number; maxLon: number; minLat: number; maxLat: number };
 }
 
 // ---------- local rules (verified Oct 2026 against dnr.wisconsin.gov) ----------
 
-const DNR_PASS = 'State trail pass required to bike, age 16+ ($5/day, $25/year).';
-const DNR_EBIKES = 'Class 1 and 3 e-bikes generally allowed at up to 15 mph; Class 2 not allowed under motor power.';
+const DNR_PASS = 'A state trail pass is needed to bike here, age 16+ ($5/day or $25/year).';
+const DNR_EBIKES = 'Class 1 and Class 3 e-bikes are allowed up to 15 mph. Class 2 (throttle) e-bikes: pedal only, motor off.';
+const DNR_EBIKE_BY_CLASS: Record<EbikeClass, string> = {
+  '1': 'Class 1 e-bikes are allowed on state trails, up to 15 mph.',
+  '2': "Class 2 e-bikes can't use the motor on state trails; pedal only.",
+  '3': 'Class 3 e-bikes are allowed on state trails, up to 15 mph.',
+};
+const LOCAL_EBIKES = 'E-bikes: follow posted signs. Some county and city paths limit e-bike classes or speed.';
+
+const dnr = (url: string): TrailRules => ({
+  badge: 'State trail pass', verdict: 'pass', pass: DNR_PASS, ebikes: DNR_EBIKES, ebikeByClass: DNR_EBIKE_BY_CLASS, manager: 'WI DNR', url,
+});
 
 const RULES: { match: RegExp; rules: TrailRules }[] = [
   {
     match: /capital city/i,
     rules: {
       badge: 'Pass on part',
-      pass: 'State trail pass required (age 16+, $5/day or $25/year) only on the 9 miles between Verona Rd and Nob Hill Rd. Free inside the City of Madison.',
+      verdict: 'part',
+      pass: 'Free in Madison and around Lake Monona. A state trail pass ($5/day or $25/year, age 16+) is needed only on the section southwest of Fitchburg, outside the city.',
       ebikes: DNR_EBIKES,
+      ebikeByClass: DNR_EBIKE_BY_CLASS,
       manager: 'Dane County Parks / WI DNR',
       url: 'https://dnr.wisconsin.gov/topic/parks/capcity/recreation',
+      // The ~9 mi state-run stretch between Verona Rd and Nob Hill Rd (approximate box).
+      paidSection: { minLon: -89.48, maxLon: -89.368, minLat: 42.95, maxLat: 43.045 },
     },
   },
-  {
-    match: /military ridge/i,
-    rules: { badge: 'State trail pass', pass: DNR_PASS, ebikes: DNR_EBIKES, manager: 'WI DNR', url: 'https://dnr.wisconsin.gov/topic/parks/militaryridge' },
-  },
-  {
-    match: /badger state/i,
-    rules: { badge: 'State trail pass', pass: DNR_PASS, ebikes: DNR_EBIKES, manager: 'WI DNR', url: 'https://dnr.wisconsin.gov/topic/parks/badger' },
-  },
-  {
-    match: /glacial drumlin/i,
-    rules: { badge: 'State trail pass', pass: DNR_PASS, ebikes: DNR_EBIKES, manager: 'WI DNR', url: 'https://dnr.wisconsin.gov/topic/parks/glacialdrumlin' },
-  },
+  { match: /military ridge/i, rules: dnr('https://dnr.wisconsin.gov/topic/parks/militaryridge') },
+  { match: /badger state/i, rules: dnr('https://dnr.wisconsin.gov/topic/parks/badger') },
+  { match: /glacial drumlin/i, rules: dnr('https://dnr.wisconsin.gov/topic/parks/glacialdrumlin') },
 ];
 
 export const TRAIL_PASS_URL = 'https://dnr.wisconsin.gov/topic/parks/trailpass';
 
+export const VERDICT_LABEL: Record<PassVerdict, string> = {
+  free: 'Free',
+  part: 'Pass needed on part',
+  pass: 'Pass needed',
+};
+
 export function rulesFor(name?: string): TrailRules | undefined {
   if (!name) return undefined;
   return RULES.find((r) => r.match.test(name))?.rules;
+}
+
+export function verdictFor(rules?: TrailRules): PassVerdict {
+  return rules?.verdict ?? 'free';
+}
+
+/** The e-bike rule to show: class-specific when the rider told us their class. */
+export function ebikeRule(rules: TrailRules | undefined, ebikeClass?: string | null): string {
+  if (!rules) return LOCAL_EBIKES;
+  if (ebikeClass === '1' || ebikeClass === '2' || ebikeClass === '3') return rules.ebikeByClass[ebikeClass];
+  return rules.ebikes;
+}
+
+/** Pieces of a trail inside its paid section, for highlighting on the map. */
+export function paidSectionLines(paths: BikePath[], rules?: TrailRules): LonLat[][] {
+  const box = rules?.paidSection;
+  if (!box) return [];
+  const inside = ([lon, lat]: LonLat) => lon >= box.minLon && lon <= box.maxLon && lat >= box.minLat && lat <= box.maxLat;
+  const out: LonLat[][] = [];
+  for (const p of paths) {
+    let run: LonLat[] = [];
+    for (const c of p.coords) {
+      if (inside(c)) run.push(c);
+      else {
+        if (run.length >= 2) out.push(run);
+        run = [];
+      }
+    }
+    if (run.length >= 2) out.push(run);
+  }
+  return out;
 }
 
 // ---------- grouping ----------
@@ -196,4 +248,41 @@ export function closestPointOnTrail(
 export function nameAt(paths: BikePath[], point: { latitude: number; longitude: number }, tolM = 18): string | undefined {
   const hit = nearestPath(paths, point, tolM / 110540, true);
   return hit?.name;
+}
+
+// ---------- distances ----------
+
+const M_PER_DEG_LAT = 110574;
+
+/** Shortest distance in meters from a point to any segment of the given paths (Infinity if none). */
+export function distanceToPathsM(paths: BikePath[], point: { latitude: number; longitude: number }): number {
+  const k = Math.cos((point.latitude * Math.PI) / 180);
+  const px = point.longitude * k;
+  const py = point.latitude;
+  let best = Infinity;
+  for (const p of paths) {
+    const c = p.coords;
+    if (c.length === 1) best = Math.min(best, sqDist(px, py, c[0][0] * k, c[0][1], c[0][0] * k, c[0][1]));
+    for (let i = 1; i < c.length; i++) {
+      const d = sqDist(px, py, c[i - 1][0] * k, c[i - 1][1], c[i][0] * k, c[i][1]);
+      if (d < best) best = d;
+    }
+  }
+  return best === Infinity ? Infinity : Math.sqrt(best) * M_PER_DEG_LAT;
+}
+
+/** Named off-street trails sorted by distance from `origin` (for the Nearby > Trails list). */
+export function trailsByDistance(
+  trails: Trail[],
+  pathById: Map<string, BikePath>,
+  origin: { latitude: number; longitude: number },
+  minLengthM = 400,
+): { trail: Trail; meters: number }[] {
+  return trails
+    .filter((t) => t.kind !== 'lane' && !!t.name && t.lengthM >= minLengthM)
+    .map((t) => ({
+      trail: t,
+      meters: distanceToPathsM(t.pathIds.map((id) => pathById.get(id)).filter((p): p is BikePath => p != null), origin),
+    }))
+    .sort((a, b) => a.meters - b.meters);
 }

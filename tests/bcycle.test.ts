@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { feedUrls, mergeStations } from '../src/lib/bcycle';
+import { bikeSummary, feedUrls, mergeStations } from '../src/lib/bcycle';
 import { distanceMeters, formatDistance } from '../src/lib/geo';
 
 test('finds station feeds in GBFS v1 (language-keyed) and v2+ shapes', () => {
@@ -47,7 +47,7 @@ test('merges info and live status, drops uninstalled stations', () => {
   assert.equal(merged.length, 2);
   assert.deepEqual(merged[0], {
     id: 'bcycle_madison_1', name: 'Capitol Square', lat: 43.075, lon: -89.384, address: undefined, capacity: 15,
-    bikes: 6, ebikes: 6, docks: 9, renting: true, returning: true, lastReported: 1761930000,
+    bikes: 6, ebikes: 6, classic: 0, docks: 9, renting: true, returning: true, lastReported: 1761930000,
   });
   assert.equal(merged[1].renting, false);
   assert.equal(merged[1].bikes, 0);
@@ -59,4 +59,26 @@ test('distance helpers', () => {
   assert.ok(m > 2200 && m < 2500, `got ${m}`);
   assert.equal(formatDistance(m), '1.5 mi');
   assert.equal(formatDistance(30), '98 ft');
+});
+
+test('e-bike vs classic counts from either GBFS field, with plain summaries', () => {
+  const info = { data: { stations: [
+    { station_id: 'a', name: 'A', lat: 43, lon: -89 },
+    { station_id: 'b', name: 'B', lat: 43, lon: -89 },
+    { station_id: 'c', name: 'C', lat: 43, lon: -89 },
+  ] } };
+  const status = { data: { stations: [
+    { station_id: 'a', num_bikes_available: 5, num_bikes_available_types: { electric: 3, classic: 2 }, is_renting: 1 },
+    { station_id: 'b', num_bikes_available: 4, num_ebikes_available: 1, is_renting: 1 },
+    { station_id: 'c', num_bikes_available: 2, is_renting: 1 },
+  ] } };
+  const [a, b, c] = mergeStations(info, status);
+  assert.deepEqual([a.ebikes, a.classic], [3, 2]);
+  assert.deepEqual([b.ebikes, b.classic], [1, 3]);
+  assert.deepEqual([c.ebikes, c.classic], [undefined, undefined]);
+  assert.equal(bikeSummary(a), '3 e-bikes · 2 classic');
+  assert.equal(bikeSummary({ bikes: 1, ebikes: 1, classic: 0 }), '1 e-bike');
+  assert.equal(bikeSummary({ bikes: 2, ebikes: 0, classic: 2 }), '2 classic bikes');
+  assert.equal(bikeSummary(c), '2 bikes');
+  assert.equal(bikeSummary({ bikes: 0, ebikes: 0, classic: 0 }), '0 bikes');
 });

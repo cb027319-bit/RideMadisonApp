@@ -100,7 +100,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const loadOsm = useCallback(async (force: boolean) => {
     // Places first: small and quick, so pins appear before the path network.
-    const placesP = cached('places:v1', CACHE_TTL.places, fetchPlaces, { force })
+    const placesP = cached('places:v2', CACHE_TTL.places, fetchPlaces, { force })
       .then((r) => {
         setPlaces(r.value);
         setPlacesState('ready');
@@ -179,6 +179,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }, 0);
     return () => clearTimeout(t);
   }, [loadOsm, refreshStations]);
+
+  // Prefetch Eat and Drink in the background ~5 s after the core map data is in,
+  // so those lists are ready by the time a rider opens them.
+  const coreReady = pathsState === 'ready' && placesState === 'ready';
+  const foodPrefetched = useRef(false);
+  useEffect(() => {
+    if (!coreReady || foodPrefetched.current) return;
+    const t = setTimeout(() => {
+      foodPrefetched.current = true;
+      loadFood();
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [coreReady, loadFood]);
 
   // Live BCycle counts while the app is in the foreground.
   const appActive = useRef(true);

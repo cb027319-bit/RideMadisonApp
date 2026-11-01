@@ -13,6 +13,9 @@ export interface BCycleStation {
   bikes: number;
   /** Breakdown when the feed provides it (BCycle Madison is mostly e-bikes). */
   ebikes?: number;
+  /** Classic (non-electric) bikes, when the feed says. */
+  classic?: number;
+  /** Open docks: spots to return a bike. */
   docks: number;
   renting: boolean;
   returning: boolean;
@@ -48,6 +51,8 @@ interface StatusStation {
   num_bikes_available?: number;
   num_docks_available?: number;
   num_bikes_available_types?: { electric?: number; classic?: number; smart?: number };
+  /** Older GBFS extension used by some systems. */
+  num_ebikes_available?: number;
   is_renting?: boolean | number;
   is_returning?: boolean | number;
   is_installed?: boolean | number;
@@ -65,6 +70,10 @@ export function mergeStations(
   for (const s of info.data.stations) {
     const st = byId.get(s.station_id);
     if (st && !truthy(st.is_installed)) continue;
+    const bikes = st?.num_bikes_available ?? 0;
+    const types = st?.num_bikes_available_types;
+    const ebikes = types?.electric ?? st?.num_ebikes_available;
+    const classic = types?.classic ?? (ebikes != null && types?.smart == null ? Math.max(0, bikes - ebikes) : undefined);
     out.push({
       id: s.station_id,
       name: s.name.trim(),
@@ -72,8 +81,9 @@ export function mergeStations(
       lon: s.lon,
       address: s.address,
       capacity: s.capacity,
-      bikes: st?.num_bikes_available ?? 0,
-      ebikes: st?.num_bikes_available_types?.electric,
+      bikes,
+      ebikes,
+      classic,
       docks: st?.num_docks_available ?? 0,
       renting: truthy(st?.is_renting, false),
       returning: truthy(st?.is_returning, false),
@@ -102,3 +112,19 @@ export async function fetchBCycle(): Promise<BCycleStation[]> {
   ]);
   return mergeStations(info, status);
 }
+
+/** "3 e-bikes · 2 classic", "4 bikes" or "1 e-bike": what's ready to rent. */
+export function bikeSummary(s: Pick<BCycleStation, 'bikes' | 'ebikes' | 'classic'>): string {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (s.ebikes != null && s.classic != null && s.ebikes + s.classic === s.bikes && s.bikes > 0) {
+    if (s.classic === 0) return plural(s.ebikes, 'e-bike', 'e-bikes');
+    if (s.ebikes === 0) return plural(s.classic, 'classic bike', 'classic bikes');
+    return `${plural(s.ebikes, 'e-bike', 'e-bikes')} · ${s.classic} classic`;
+  }
+  return plural(s.bikes, 'bike', 'bikes');
+}
+
+export const BCYCLE_PRICING_URL = 'https://madison.bcycle.com/pricing';
+export const BCYCLE_APP_IOS = 'https://apps.apple.com/us/app/bcycle/id1475587580';
+export const BCYCLE_APP_ANDROID = 'market://details?id=com.bcycle.bcycle';
+export const BCYCLE_APP_ANDROID_WEB = 'https://play.google.com/store/apps/details?id=com.bcycle.bcycle';

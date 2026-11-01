@@ -25,17 +25,25 @@ export interface Partner {
   photo_url: string | null;
   sponsored_trail: string | null;
   osm_place_id: string | null;
+  /** Opening hours in OpenStreetMap format, e.g. "Mo-Fr 10:00-18:00; Sa 10:00-16:00" (migration 0005). */
+  hours?: string | null;
+  /** Trail Partner tier: the trail this business is on, e.g. "Capital City State Trail" (migration 0005). */
+  trail_name?: string | null;
+  /** Code shown on the offer pass, if any (migration 0005). */
+  offer_code?: string | null;
   /** Sample data for demos; never recorded or shipped. */
   demo?: boolean;
 }
 
-const COLUMNS =
+const BASE_COLUMNS =
   'id,name,tier,category,latitude,longitude,address,phone,website,blurb,offer,color,logo_url,photo_url,sponsored_trail,osm_place_id';
+/** Added in 0005_partners_v1.sql; the app falls back to BASE_COLUMNS until that migration runs. */
+const COLUMNS = `${BASE_COLUMNS},hours,trail_name,offer_code`;
 
 export const CATEGORY_LABEL: Record<string, string> = {
   shop: 'Bike shop',
-  food: 'Food',
-  drink: 'Drinks',
+  food: 'Eat',
+  drink: 'Drink',
   lodging: 'Lodging',
   service: 'Service',
   other: 'Local business',
@@ -60,6 +68,9 @@ export const DEMO_PARTNERS: Partner[] = [
     photo_url: null,
     sponsored_trail: null,
     osm_place_id: null,
+    hours: 'Tu-Fr 10:00-18:00; Sa 10:00-16:00; Su,Mo off',
+    trail_name: 'Capital City State Trail',
+    offer_code: 'RIDEMAD10',
     demo: true,
   },
   {
@@ -79,6 +90,9 @@ export const DEMO_PARTNERS: Partner[] = [
     photo_url: null,
     sponsored_trail: 'Capital City State Trail',
     osm_place_id: null,
+    hours: 'Mo-Fr 06:30-17:00; Sa,Su 07:00-17:00',
+    trail_name: null,
+    offer_code: null,
     demo: true,
   },
 ];
@@ -88,9 +102,11 @@ export async function fetchPartners(force = false): Promise<Partner[]> {
   if (supabase) {
     try {
       const r = await cached('partners:v1', 60 * 60 * 1000, async () => {
-        const { data, error } = await supabase!.from('partners').select(COLUMNS);
+        let { data, error } = await supabase!.from('partners').select(COLUMNS);
+        // Before 0005_partners_v1.sql runs the new columns don't exist yet: use the original ones.
+        if (error) ({ data, error } = await supabase!.from('partners').select(BASE_COLUMNS));
         if (error) throw new Error(error.message);
-        return (data ?? []) as Partner[];
+        return (data ?? []) as unknown as Partner[];
       }, { force });
       live = r.value;
     } catch {
@@ -100,6 +116,8 @@ export async function fetchPartners(force = false): Promise<Partner[]> {
   if (live.length === 0 && __DEV__) return DEMO_PARTNERS;
   return live;
 }
+
+export { isPartnerPlace, PARTNER_LAYER, partnersOnTrail, partnersToPin } from './partner-geo';
 
 /** Corridor sponsor for a trail, matched by trail name. */
 export function sponsorForTrail(partners: Partner[], trailName?: string): Partner | undefined {
