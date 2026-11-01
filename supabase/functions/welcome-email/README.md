@@ -10,7 +10,7 @@ Preview: `npx tsx` a script calling `welcomeEmail()` from template.ts, or see th
 
 1. **Run migration 0006** (`supabase/migrations/0006_welcome_email.sql`) in SQL Editor.
    Existing accounts are marked as already welcomed, so only new riders get it.
-2. **Logo** (optional but recommended): Supabase → Storage → New bucket `Email`, Public on →
+2. **Logo** (optional but recommended): Supabase → Storage → New bucket `email`, Public on →
    upload `assets/email/logo.png` → click it → Get URL. Copy that URL.
 3. **Secrets**: Supabase → Edge Functions → Secrets → add:
    - `RESEND_API_KEY`: your Resend key
