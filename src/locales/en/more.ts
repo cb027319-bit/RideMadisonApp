@@ -62,7 +62,7 @@ export const more = {
   'more.terms': 'Terms of Use',
   'more.business': 'For local businesses',
   'more.advertise': 'Advertise on Ride Madison',
-  'more.advertiseHint': 'Email partners@ridemadison.com',
+  'more.advertiseHint': 'Email hello@ridemadison.com',
   'more.sources': 'Sources',
   'more.sourcesMapData': 'Map data ©',
   'more.sourcesOsm': 'OpenStreetMap contributors',

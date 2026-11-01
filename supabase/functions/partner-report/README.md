@@ -20,7 +20,7 @@ Dashboard → Edge Functions → Secrets (or with the CLI):
 
 ```
 supabase secrets set RESEND_API_KEY=re_xxx
-supabase secrets set REPORT_FROM="Ride Madison <partners@ridemadison.com>"
+supabase secrets set REPORT_FROM="Ride Madison <hello@ridemadison.com>"
 supabase secrets set REPORT_BCC=you@example.com   # optional: get a copy of each report
 ```
 

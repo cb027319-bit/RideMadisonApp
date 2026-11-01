@@ -65,7 +65,7 @@ export const more: Dict<typeof en> = {
   'more.terms': 'Términos de uso',
   'more.business': 'Para negocios locales',
   'more.advertise': 'Anúnciate en Ride Madison',
-  'more.advertiseHint': 'Escribe a partners@ridemadison.com',
+  'more.advertiseHint': 'Escribe a hello@ridemadison.com',
   'more.sources': 'Fuentes',
   'more.sourcesMapData': 'Datos del mapa ©',
   'more.sourcesOsm': 'colaboradores de OpenStreetMap',

@@ -21,7 +21,7 @@ import type { Key } from '@/locales';
 
 const PRIVACY_URL = 'https://ridemadison.com/privacy';
 const TERMS_URL = 'https://ridemadison.com/terms';
-const PARTNERS_EMAIL = 'mailto:partners@ridemadison.com?subject=Advertising%20on%20Ride%20Madison';
+const PARTNERS_EMAIL = 'mailto:hello@ridemadison.com?subject=Advertising%20on%20Ride%20Madison';
 
 const COLLECTED: Key[] = ['more.collectAccount', 'more.collectRides', 'more.collectStyle', 'more.collectTaps'];
 

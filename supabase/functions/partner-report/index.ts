@@ -6,7 +6,7 @@
 //
 // Secrets (Dashboard → Edge Functions → Secrets; never in code):
 //   RESEND_API_KEY   Resend API key
-//   REPORT_FROM      e.g. "Ride Madison <partners@ridemadison.com>" (a domain verified in Resend)
+//   REPORT_FROM      e.g. "Ride Madison <hello@ridemadison.com>" (a domain verified in Resend)
 //   REPORT_BCC       optional: your own address, to get a copy of every report
 // Provided automatically by Supabase: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 
@@ -120,7 +120,7 @@ async function handler(req: Request): Promise<Response> {
         from,
         to: [r.contact_email],
         ...(bcc ? { bcc: [bcc] } : {}),
-        reply_to: 'partners@ridemadison.com',
+        reply_to: 'hello@ridemadison.com',
         subject: email.subject,
         text: email.text,
         html: email.html,
