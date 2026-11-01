@@ -258,6 +258,27 @@ export default function RouteScreen() {
           )}
         </Pressable>
 
+        {hasRoute && (
+          <View style={styles.startRow}>
+            <Pressable
+              style={({ pressed }) => [styles.startBtn, pressed && { transform: [{ scale: 0.98 }], opacity: 0.92 }]}
+              onPress={() => openTrip('/navigate')}
+              accessibilityRole="button"
+              accessibilityLabel="Start turn-by-turn navigation">
+              <Ionicons name="navigate" size={24} color="#fff" />
+              <Text style={styles.startText}>Start ride</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.previewBtn, pressed && { opacity: 0.8 }]}
+              onPress={() => openTrip('/tour')}
+              accessibilityRole="button"
+              accessibilityLabel="Virtual preview of this ride">
+              <Ionicons name="play-circle" size={22} color={BRAND.navy} />
+              <Text style={styles.previewText}>Preview</Text>
+            </Pressable>
+          </View>
+        )}
+
         {route.stops.length === 0 && (
           <Pressable style={styles.ideas} onPress={() => setShowIdeas(true)} accessibilityRole="button">
             <Ionicons name="compass" size={22} color="#fff" />
@@ -326,8 +347,6 @@ export default function RouteScreen() {
             <View style={styles.actions}>
               {hasRoute && (
                 <>
-                  <Action icon="navigate" label="Start" primary onPress={() => openTrip('/navigate')} />
-                  <Action icon="play-circle-outline" label="Preview" onPress={() => openTrip('/tour')} />
                   <Action
                     icon="bookmark-outline"
                     label="Save"
@@ -585,6 +604,18 @@ const styles = StyleSheet.create({
   handleArea: { paddingTop: 8, paddingBottom: 10, alignItems: 'center', gap: 8 },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#d1d5db' },
   summary: { fontSize: 19, fontFamily: FONT.black, color: COLORS.text },
+  startRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  startBtn: {
+    flex: 1, height: 58, borderRadius: 16, backgroundColor: BRAND.red, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 10,
+    shadowColor: BRAND.red, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
+  },
+  startText: { color: '#fff', fontSize: 20, fontFamily: FONT.black, letterSpacing: 0.3 },
+  previewBtn: {
+    height: 58, paddingHorizontal: 16, borderRadius: 16, borderWidth: 2, borderColor: BRAND.navy, flexDirection: 'row',
+    alignItems: 'center', gap: 6, backgroundColor: '#fff',
+  },
+  previewText: { color: BRAND.navy, fontSize: 16, fontFamily: FONT.black },
   ideas: {
     flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: PRIMARY, borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
