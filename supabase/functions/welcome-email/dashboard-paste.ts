@@ -219,7 +219,7 @@ function welcomeEmail(input: WelcomeInput): { subject: string; html: string; tex
       <tr><td style="background:${CREAM};padding:20px 32px;font-family:${FONT};font-size:12px;line-height:18px;color:${SLATE};">
         ${esc(c.footerWhy)}<br><br>
         <b style="color:${NAVY};">Ride Madison™</b> · ${esc(c.footerMade)}${input.mailingAddress ? `<br>${esc(input.mailingAddress)}` : ''}<br>
-        <a href="https://ridemadison.com/privacy" style="color:${NAVY};">Privacy</a> · <a href="https://ridemadison.com/terms" style="color:${NAVY};">Terms</a>
+        <a href="https://ridemadison.com" style="color:${NAVY};">ridemadison.com</a> · <a href="mailto:hello@ridemadison.com" style="color:${NAVY};">hello@ridemadison.com</a> · <a href="https://ridemadison.com/privacy" style="color:${NAVY};">Privacy</a> · <a href="https://ridemadison.com/terms" style="color:${NAVY};">Terms</a>
       </td></tr>
     </table>
   </td></tr>

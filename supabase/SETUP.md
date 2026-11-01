@@ -107,6 +107,6 @@ Sign in with Apple token revocation on account deletion is still to do: see `sup
 ## Email + password sign-up and welcome email (0006)
 
 1. Authentication → Sign In / Providers → Email: turn **off** "Confirm email" so new accounts sign in right away.
-2. Authentication → Emails → Reset Password: make the email show the 6-digit code with `{{ .Token }}` (the app asks for the code when someone forgets their password).
+2. Authentication → Emails → Reset Password: subject `Your Ride Madison password reset code`, body = all of `supabase/email-templates/reset-password.html` (branded, shows the 6-digit `{{ .Token }}` code the app asks for).
 3. Run `supabase/migrations/0006_welcome_email.sql`.
 4. Deploy the welcome email: see `supabase/functions/welcome-email/README.md`.
