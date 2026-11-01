@@ -27,9 +27,10 @@ export function Onboarding({ visible, initial, onDone, onSkip }: Props) {
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
           <AppIcon size={64} />
-          <Text style={styles.welcome}>
-            Welcome to <Wordmark size={28} />
-          </Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.welcome}>Welcome to </Text>
+            <Wordmark size={28} />
+          </View>
           <Text style={styles.sub}>Two quick questions so routes fit how you ride.</Text>
 
           <Text style={styles.q}>What do you ride?</Text>
@@ -90,7 +91,8 @@ export function Onboarding({ visible, initial, onDone, onSkip }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: 24, paddingBottom: 12 },
-  welcome: { fontSize: 28, fontFamily: FONT.black, color: COLORS.text, marginTop: 16 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 16 },
+  welcome: { fontSize: 28, fontFamily: FONT.black, color: COLORS.text },
   sub: { fontSize: 16, color: COLORS.muted, marginTop: 6 },
   q: { fontSize: 19, fontFamily: FONT.black, color: COLORS.text, marginTop: 28, marginBottom: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

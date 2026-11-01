@@ -1,5 +1,5 @@
 // Branded opening screen: picks up seamlessly from the navy native splash,
-// animates in the logo, RideMadison™ wordmark and tagline, then fades into the
+// animates in the logo, RideMadison® wordmark and tagline, then fades into the
 // app. Tap anywhere to skip.
 
 import { useEffect, useRef, useState, createContext, useContext } from 'react';
@@ -54,7 +54,7 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
                   { translateY: mark.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
                 ],
               }}>
-              <LogoMark size={128} color={BRAND.limestone} tm={false} />
+              <LogoMark size={128} color={BRAND.limestone} />
             </Animated.View>
             <Animated.View
               style={{
@@ -62,7 +62,9 @@ export function LaunchScreen({ onDone }: { onDone: () => void }) {
                 opacity: text,
                 transform: [{ translateY: text.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
               }}>
-              <Wordmark size={44} color="#FFFFFF" style={{ marginTop: 22 }} />
+              <View style={{ marginTop: 22 }}>
+                <Wordmark size={44} color="#FFFFFF" />
+              </View>
               <View style={styles.rule} />
               <Text style={styles.tagline}>{TAGLINE}</Text>
             </Animated.View>

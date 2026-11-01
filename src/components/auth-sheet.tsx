@@ -80,9 +80,10 @@ function SheetBody() {
                 <AppIcon size={72} />
               </View>
               {mode === 'welcome' ? (
-                <Text style={styles.h1}>
-                  Join <Wordmark size={30} />
-                </Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.h1}>Join </Text>
+                  <Wordmark size={30} />
+                </View>
               ) : (
                 <Text style={styles.h1}>Create a free account</Text>
               )}
@@ -290,6 +291,7 @@ const styles = StyleSheet.create({
   later: { fontSize: 16, color: COLORS.muted, fontWeight: '600' },
   content: { padding: 24, paddingTop: 8 },
   logo: { marginBottom: 18 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   h1: { fontSize: 28, fontFamily: FONT.black, color: COLORS.text },
   sub: { fontSize: 16, color: COLORS.muted, marginTop: 8, lineHeight: 22 },
   buttons: { marginTop: 28, gap: 12 },

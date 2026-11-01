@@ -10,27 +10,14 @@ import { BRAND, FONT } from '@/lib/config';
 const SPOKES =
   'M55 34 L63.5 34 M50 39 L50 47.5 M45 34 L36.5 34 M50 29 L50 20.5 M53.5 37.5 L59.5 43.5 M46.5 37.5 L40.5 43.5 M46.5 30.5 L40.5 24.5 M53.5 30.5 L59.5 24.5';
 
-/** Trademark symbol placed at the upper right of a logo. */
-function TM({ size, color }: { size: number; color: string }) {
-  return (
-    <Text
-      style={{ fontFamily: FONT.bold, fontSize: Math.max(7, size * 0.24), color, marginLeft: 1, alignSelf: 'flex-start' }}
-      accessibilityLabel="trademark">
-      ™
-    </Text>
-  );
-}
+/** Mark shown after the wordmark text. Use '™' until the name is a registered trademark. */
+export const BRAND_MARK_SYMBOL = '®';
 
 /** The pin mark on its own (no background). `color` draws the wheel and pin. */
-export function LogoMark({ size = 40, color = BRAND.limestone, hub = true, tm = true }: {
-  size?: number; color?: string; hub?: boolean; tm?: boolean;
+export function LogoMark({ size = 40, color = BRAND.limestone, hub = true }: {
+  size?: number; color?: string; hub?: boolean;
 }) {
-  return (
-    <View style={{ flexDirection: 'row' }}>
-      <MarkSvg size={size} color={color} hub={hub} />
-      {tm && <TM size={size} color={color} />}
-    </View>
-  );
+  return <MarkSvg size={size} color={color} hub={hub} />;
 }
 
 function MarkSvg({ size, color, hub }: { size: number; color: string; hub: boolean }) {
@@ -48,16 +35,9 @@ function MarkSvg({ size, color, hub }: { size: number; color: string; hub: boole
   );
 }
 
-/** The app icon: navy rounded square with the mark, ™ at its upper right. */
-export function AppIcon({ size = 64, withText = false, tm = true, tmColor = BRAND.navy }: {
-  size?: number; withText?: boolean; tm?: boolean; tmColor?: string;
-}) {
-  return (
-    <View style={{ flexDirection: 'row' }}>
-      <AppIconTile size={size} withText={withText} />
-      {tm && <TM size={size * 0.7} color={tmColor} />}
-    </View>
-  );
+/** The app icon: navy rounded square with the mark. */
+export function AppIcon({ size = 64, withText = false }: { size?: number; withText?: boolean }) {
+  return <AppIconTile size={size} withText={withText} />;
 }
 
 function AppIconTile({ size, withText }: { size: number; withText: boolean }) {
@@ -79,19 +59,34 @@ function AppIconTile({ size, withText }: { size: number; withText: boolean }) {
   );
 }
 
-/** "RideMadison™" wordmark: heavy Ride, light Madison, trademark symbol. */
-export function Wordmark({ size = 28, color = BRAND.navy, style, tm = true }: {
-  size?: number; color?: string; style?: TextStyle; tm?: boolean;
+/** "RideMadison®" wordmark: heavy Ride, light Madison, small raised ® at the upper right. */
+export function Wordmark({ size = 28, color = BRAND.navy, style, mark = true }: {
+  size?: number; color?: string; style?: TextStyle; mark?: boolean;
 }) {
   return (
-    <Text
-      style={[{ fontSize: size, color, letterSpacing: -size * 0.02, includeFontPadding: false }, style]}
+    <View
+      style={{ flexDirection: 'row', alignItems: 'flex-start' }}
+      accessible
       accessibilityRole="header"
       accessibilityLabel="Ride Madison">
-      <Text style={{ fontFamily: FONT.black }}>Ride</Text>
-      <Text style={{ fontFamily: FONT.light }}>Madison</Text>
-      {tm && <Text style={{ fontFamily: FONT.bold, fontSize: size * 0.42, letterSpacing: 0 }}>™</Text>}
-    </Text>
+      <Text style={[{ fontSize: size, color, letterSpacing: -size * 0.02, includeFontPadding: false }, style]}>
+        <Text style={{ fontFamily: FONT.black }}>Ride</Text>
+        <Text style={{ fontFamily: FONT.light }}>Madison</Text>
+      </Text>
+      {mark && (
+        <Text
+          style={{
+            fontFamily: FONT.bold,
+            fontSize: Math.max(8, size * 0.32),
+            color,
+            marginLeft: size * 0.04,
+            marginTop: size * 0.08,
+            includeFontPadding: false,
+          }}>
+          {BRAND_MARK_SYMBOL}
+        </Text>
+      )}
+    </View>
   );
 }
 
@@ -100,7 +95,7 @@ export function HorizontalLogo({ height = 44, onLight = false }: { height?: numb
   const fg = onLight ? BRAND.navy : '#FFFFFF';
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: height * 0.28 }}>
-      <LogoMark size={height} color={onLight ? BRAND.navy : BRAND.limestone} tm={false} />
+      <LogoMark size={height} color={onLight ? BRAND.navy : BRAND.limestone} />
       <Wordmark size={height * 0.72} color={fg} />
     </View>
   );
