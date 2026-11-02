@@ -32,6 +32,8 @@ export const events = {
   'events.moreInfo': 'Más información',
   'events.ticketmaster': 'Boletos en Ticketmaster',
   'events.fromTicketmaster': 'Información del evento de Ticketmaster',
+  'events.seatgeek': 'Boletos en SeatGeek',
+  'events.fromSeatgeek': 'Información del evento de SeatGeek',
   'events.details': 'Detalles del evento',
   'events.openA11y': 'Abre los detalles del evento',
   'events.form.title': 'Agregar un evento',

@@ -1,14 +1,14 @@
 // Events tab: Madison-area events, each with a bike route there and the nearest bike parking.
 // Pure logic (testable in Node); network calls are in events-api.ts.
 // Data lives in Supabase (table `events`, migration 0007): Ride Madison's own picks, events
-// submitted in the app (approved first), and concerts imported from Ticketmaster.
+// submitted in the app (approved first), and concerts imported from Ticketmaster and SeatGeek.
 
 import { distanceMeters } from './geo';
 import { lang, t } from './i18n';
 import type { Place } from './osm';
 
 export type EventCategory = 'bike' | 'music' | 'community' | 'sports' | 'arts' | 'food' | 'family';
-export type EventSource = 'curated' | 'partner' | 'ticketmaster';
+export type EventSource = 'curated' | 'partner' | 'ticketmaster' | 'seatgeek';
 
 export interface RideEvent {
   id: string;

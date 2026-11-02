@@ -1,13 +1,14 @@
 // Ride Madison: events-sync (Supabase Edge Function, Deno).
 //
 // Imports concerts and big events within 25 miles of Madison from the Ticketmaster Discovery API
-// into the `events` table (migration 0007), for the next 60 days. Run daily with Supabase Cron.
+// and (when SEATGEEK_CLIENT_ID is set) SeatGeek into the `events` table (migrations 0007, 0008),
+// for the next 60 days. SeatGeek shows already listed on Ticketmaster are skipped. Run daily.
 // Events you've set to 'rejected' in Table Editor stay hidden; cancelled events are hidden too.
 //
-// Secrets: TICKETMASTER_API_KEY (Edge Functions → Secrets). Provided automatically: SUPABASE_URL,
+// Secrets: TICKETMASTER_API_KEY, optional SEATGEEK_CLIENT_ID (Edge Functions → Secrets). Provided automatically: SUPABASE_URL,
 // SUPABASE_SERVICE_ROLE_KEY. scripts/build-events-sync-function.mjs bundles this into dashboard-paste.ts.
 
-import { mapTicketmaster, type EventRow, type TmEvent } from './map';
+import { isSameEvent, mapSeatGeek, mapTicketmaster, type EventRow, type SgEvent, type TmEvent } from './map';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 declare const Deno: {
@@ -53,7 +54,34 @@ async function fetchTicketmaster(apiKey: string): Promise<TmEvent[]> {
   return out;
 }
 
-async function sync(supabaseUrl: string, key: string, apiKey: string) {
+async function fetchSeatGeek(clientId: string): Promise<SgEvent[]> {
+  const now = new Date();
+  const until = new Date(now.getTime() + DAYS_AHEAD * 86_400_000);
+  const [lat, lon] = CENTER.split(',');
+  const out: SgEvent[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const q = new URLSearchParams({
+      client_id: clientId,
+      lat,
+      lon,
+      range: `${RADIUS_MILES}mi`,
+      'datetime_utc.gte': now.toISOString().slice(0, 19),
+      'datetime_utc.lte': until.toISOString().slice(0, 19),
+      per_page: String(PAGE_SIZE),
+      page: String(page),
+      sort: 'datetime_utc.asc',
+    });
+    const res = await fetch(`https://api.seatgeek.com/2/events?${q}`);
+    if (!res.ok) throw new Error(`SeatGeek ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    const body = (await res.json()) as { events?: SgEvent[]; meta?: { total?: number; per_page?: number } };
+    out.push(...(body.events ?? []));
+    if (page * PAGE_SIZE >= (body.meta?.total ?? 0)) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return out;
+}
+
+async function sync(supabaseUrl: string, key: string, apiKey: string, seatGeekId?: string) {
   const auth = { apikey: key, Authorization: `Bearer ${key}` };
   const raw = await fetchTicketmaster(apiKey);
   const rows: EventRow[] = [];
@@ -66,10 +94,35 @@ async function sync(supabaseUrl: string, key: string, apiKey: string) {
     }
   }
 
+  // SeatGeek: only shows Ticketmaster doesn't already list. A SeatGeek failure never blocks Ticketmaster.
+  let seatgeek: { fetched: number; added: number; error?: string } | undefined;
+  if (seatGeekId) {
+    try {
+      const sg = await fetchSeatGeek(seatGeekId);
+      const tm = [...rows];
+      let added = 0;
+      for (const e of sg) {
+        const row = mapSeatGeek(e);
+        if (!row || seen.has(`sg:${row.source_id}`) || tm.some((t) => isSameEvent(t, row))) continue;
+        seen.add(`sg:${row.source_id}`);
+        rows.push(row);
+        added++;
+      }
+      seatgeek = { fetched: sg.length, added };
+    } catch (e) {
+      seatgeek = { fetched: 0, added: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   // Keep events you've hidden in Table Editor hidden.
-  const hiddenRes = await fetch(`${supabaseUrl}/rest/v1/events?source=eq.ticketmaster&status=eq.rejected&select=source_id`, { headers: auth });
-  const hidden = new Set(hiddenRes.ok ? ((await hiddenRes.json()) as { source_id: string }[]).map((r) => r.source_id) : []);
-  for (const r of rows) if (hidden.has(r.source_id)) r.status = 'rejected';
+  const hiddenRes = await fetch(
+    `${supabaseUrl}/rest/v1/events?source=in.(ticketmaster,seatgeek)&status=eq.rejected&select=source,source_id`,
+    { headers: auth },
+  );
+  const hidden = new Set(
+    hiddenRes.ok ? ((await hiddenRes.json()) as { source: string; source_id: string }[]).map((r) => `${r.source}:${r.source_id}`) : [],
+  );
+  for (const r of rows) if (hidden.has(`${r.source}:${r.source_id}`)) r.status = 'rejected';
 
   for (let i = 0; i < rows.length; i += 200) {
     const up = await fetch(`${supabaseUrl}/rest/v1/events?on_conflict=source,source_id`, {
@@ -79,7 +132,7 @@ async function sync(supabaseUrl: string, key: string, apiKey: string) {
     });
     if (!up.ok) throw new Error(`save ${up.status}: ${(await up.text()).slice(0, 200)}`);
   }
-  return { fetched: raw.length, saved: rows.length, hidden: rows.filter((r) => r.status === 'rejected').length };
+  return { fetched: raw.length, saved: rows.length, hidden: rows.filter((r) => r.status === 'rejected').length, seatgeek };
 }
 
 Deno.serve(async (req) => {
@@ -89,7 +142,7 @@ Deno.serve(async (req) => {
   if (!supabaseUrl || !key) return json({ error: 'Server not configured' }, 500);
   if (!apiKey) return json({ error: 'Add the TICKETMASTER_API_KEY secret first' }, 500);
 
-  const run = sync(supabaseUrl, key, apiKey);
+  const run = sync(supabaseUrl, key, apiKey, Deno.env.get('SEATGEEK_CLIENT_ID') || undefined);
   // Scheduled runs answer at once and finish in the background (the scheduler only waits a few seconds).
   // Test with ?wait=1 to see the result.
   if (new URL(req.url).searchParams.get('wait') !== '1' && typeof EdgeRuntime !== 'undefined') {

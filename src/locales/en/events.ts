@@ -32,6 +32,8 @@ export const events = {
   'events.moreInfo': 'More info',
   'events.ticketmaster': 'Tickets on Ticketmaster',
   'events.fromTicketmaster': 'Event info from Ticketmaster',
+  'events.seatgeek': 'Tickets on SeatGeek',
+  'events.fromSeatgeek': 'Event info from SeatGeek',
   'events.details': 'Event details',
   'events.openA11y': 'Opens event details',
   'events.form.title': 'Add an event',

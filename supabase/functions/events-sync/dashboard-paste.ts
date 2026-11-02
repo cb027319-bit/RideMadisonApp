@@ -62,6 +62,55 @@ function mapTicketmaster(e) {
     image_url: image(e)
   };
 }
+function sgCategory(e) {
+  const names = [e.type ?? "", ...(e.taxonomies ?? []).map((x) => x.name ?? "")].join(" ").toLowerCase();
+  if (/concert|music|festival/.test(names)) return "music";
+  if (/sport|basketball|football|hockey|baseball|soccer|wrestling|racing|volleyball/.test(names)) return "sports";
+  if (/family|children|kids/.test(names)) return "family";
+  if (/theater|theatre|comedy|broadway|dance|classical|opera|literary/.test(names)) return "arts";
+  return "community";
+}
+function mapSeatGeek(e) {
+  if (!e.id || !e.title || !e.datetime_utc || e.date_tbd || e.datetime_tbd) return null;
+  const startsAt = (/* @__PURE__ */ new Date(`${e.datetime_utc}Z`)).toISOString();
+  const v = e.venue;
+  const lat = typeof v?.location?.lat === "number" ? v.location.lat : null;
+  const lon = typeof v?.location?.lon === "number" ? v.location.lon : null;
+  const address = [v?.address, v?.city, v?.state].filter(Boolean).join(", ") || null;
+  const img = e.performers?.find((p) => p.image?.startsWith("https://"))?.image ?? null;
+  return {
+    source: "seatgeek",
+    source_id: String(e.id),
+    status: "approved",
+    category: sgCategory(e),
+    title: e.title.trim().slice(0, 120),
+    description: e.description ? e.description.trim().slice(0, 1e3) : null,
+    starts_at: startsAt,
+    ends_at: null,
+    venue_name: v?.name?.trim().slice(0, 120) ?? null,
+    address: address ? address.slice(0, 200) : null,
+    latitude: lat,
+    longitude: lon,
+    url: e.url?.startsWith("http") ? e.url : null,
+    image_url: img
+  };
+}
+var metersBetween = (a, b) => {
+  const R = 6371e3;
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+function isSameEvent(a, b) {
+  if (Math.abs(Date.parse(a.starts_at) - Date.parse(b.starts_at)) > 90 * 6e4) return false;
+  if (a.latitude != null && a.longitude != null && b.latitude != null && b.longitude != null) {
+    return metersBetween({ latitude: a.latitude, longitude: a.longitude }, { latitude: b.latitude, longitude: b.longitude }) <= 300;
+  }
+  const norm = (s) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return !!a.venue_name && norm(a.venue_name) === norm(b.venue_name);
+}
 
 // supabase/functions/events-sync/index.ts
 var CENTER = "43.0731,-89.4012";
@@ -97,7 +146,33 @@ async function fetchTicketmaster(apiKey) {
   }
   return out;
 }
-async function sync(supabaseUrl, key, apiKey) {
+async function fetchSeatGeek(clientId) {
+  const now = /* @__PURE__ */ new Date();
+  const until = new Date(now.getTime() + DAYS_AHEAD * 864e5);
+  const [lat, lon] = CENTER.split(",");
+  const out = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const q = new URLSearchParams({
+      client_id: clientId,
+      lat,
+      lon,
+      range: `${RADIUS_MILES}mi`,
+      "datetime_utc.gte": now.toISOString().slice(0, 19),
+      "datetime_utc.lte": until.toISOString().slice(0, 19),
+      per_page: String(PAGE_SIZE),
+      page: String(page),
+      sort: "datetime_utc.asc"
+    });
+    const res = await fetch(`https://api.seatgeek.com/2/events?${q}`);
+    if (!res.ok) throw new Error(`SeatGeek ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    const body = await res.json();
+    out.push(...body.events ?? []);
+    if (page * PAGE_SIZE >= (body.meta?.total ?? 0)) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return out;
+}
+async function sync(supabaseUrl, key, apiKey, seatGeekId) {
   const auth = { apikey: key, Authorization: `Bearer ${key}` };
   const raw = await fetchTicketmaster(apiKey);
   const rows = [];
@@ -109,9 +184,32 @@ async function sync(supabaseUrl, key, apiKey) {
       rows.push(row);
     }
   }
-  const hiddenRes = await fetch(`${supabaseUrl}/rest/v1/events?source=eq.ticketmaster&status=eq.rejected&select=source_id`, { headers: auth });
-  const hidden = new Set(hiddenRes.ok ? (await hiddenRes.json()).map((r) => r.source_id) : []);
-  for (const r of rows) if (hidden.has(r.source_id)) r.status = "rejected";
+  let seatgeek;
+  if (seatGeekId) {
+    try {
+      const sg = await fetchSeatGeek(seatGeekId);
+      const tm = [...rows];
+      let added = 0;
+      for (const e of sg) {
+        const row = mapSeatGeek(e);
+        if (!row || seen.has(`sg:${row.source_id}`) || tm.some((t) => isSameEvent(t, row))) continue;
+        seen.add(`sg:${row.source_id}`);
+        rows.push(row);
+        added++;
+      }
+      seatgeek = { fetched: sg.length, added };
+    } catch (e) {
+      seatgeek = { fetched: 0, added: 0, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  const hiddenRes = await fetch(
+    `${supabaseUrl}/rest/v1/events?source=in.(ticketmaster,seatgeek)&status=eq.rejected&select=source,source_id`,
+    { headers: auth }
+  );
+  const hidden = new Set(
+    hiddenRes.ok ? (await hiddenRes.json()).map((r) => `${r.source}:${r.source_id}`) : []
+  );
+  for (const r of rows) if (hidden.has(`${r.source}:${r.source_id}`)) r.status = "rejected";
   for (let i = 0; i < rows.length; i += 200) {
     const up = await fetch(`${supabaseUrl}/rest/v1/events?on_conflict=source,source_id`, {
       method: "POST",
@@ -120,7 +218,7 @@ async function sync(supabaseUrl, key, apiKey) {
     });
     if (!up.ok) throw new Error(`save ${up.status}: ${(await up.text()).slice(0, 200)}`);
   }
-  return { fetched: raw.length, saved: rows.length, hidden: rows.filter((r) => r.status === "rejected").length };
+  return { fetched: raw.length, saved: rows.length, hidden: rows.filter((r) => r.status === "rejected").length, seatgeek };
 }
 Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -128,7 +226,7 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("TICKETMASTER_API_KEY");
   if (!supabaseUrl || !key) return json({ error: "Server not configured" }, 500);
   if (!apiKey) return json({ error: "Add the TICKETMASTER_API_KEY secret first" }, 500);
-  const run = sync(supabaseUrl, key, apiKey);
+  const run = sync(supabaseUrl, key, apiKey, Deno.env.get("SEATGEEK_CLIENT_ID") || void 0);
   if (new URL(req.url).searchParams.get("wait") !== "1" && typeof EdgeRuntime !== "undefined") {
     EdgeRuntime.waitUntil(run.catch((e) => console.error("events-sync failed", e)));
     return json({ started: true }, 202);

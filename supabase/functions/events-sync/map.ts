@@ -23,7 +23,7 @@ export interface TmEvent {
 }
 
 export interface EventRow {
-  source: 'ticketmaster';
+  source: 'ticketmaster' | 'seatgeek';
   source_id: string;
   status: 'approved' | 'rejected';
   category: 'music' | 'sports' | 'arts' | 'family' | 'community';
@@ -108,4 +108,85 @@ export function mapTicketmaster(e: TmEvent): EventRow | null {
     url: e.url?.startsWith('http') ? e.url : null,
     image_url: image(e),
   };
+}
+
+// ---------- SeatGeek (https://api.seatgeek.com/2/events) ----------
+
+export interface SgEvent {
+  id: number;
+  title: string;
+  url?: string;
+  datetime_utc?: string;
+  datetime_tbd?: boolean;
+  date_tbd?: boolean;
+  time_tbd?: boolean;
+  type?: string;
+  taxonomies?: { name?: string }[];
+  description?: string;
+  performers?: { image?: string | null }[];
+  venue?: {
+    name?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    location?: { lat?: number; lon?: number };
+  };
+}
+
+function sgCategory(e: SgEvent): EventRow['category'] {
+  const names = [e.type ?? '', ...(e.taxonomies ?? []).map((x) => x.name ?? '')].join(' ').toLowerCase();
+  if (/concert|music|festival/.test(names)) return 'music';
+  if (/sport|basketball|football|hockey|baseball|soccer|wrestling|racing|volleyball/.test(names)) return 'sports';
+  if (/family|children|kids/.test(names)) return 'family';
+  if (/theater|theatre|comedy|broadway|dance|classical|opera|literary/.test(names)) return 'arts';
+  return 'community';
+}
+
+export function mapSeatGeek(e: SgEvent): EventRow | null {
+  if (!e.id || !e.title || !e.datetime_utc || e.date_tbd || e.datetime_tbd) return null;
+  const startsAt = new Date(`${e.datetime_utc}Z`).toISOString();
+  const v = e.venue;
+  const lat = typeof v?.location?.lat === 'number' ? v.location.lat : null;
+  const lon = typeof v?.location?.lon === 'number' ? v.location.lon : null;
+  const address = [v?.address, v?.city, v?.state].filter(Boolean).join(', ') || null;
+  const img = e.performers?.find((p) => p.image?.startsWith('https://'))?.image ?? null;
+  return {
+    source: 'seatgeek',
+    source_id: String(e.id),
+    status: 'approved',
+    category: sgCategory(e),
+    title: e.title.trim().slice(0, 120),
+    description: e.description ? e.description.trim().slice(0, 1000) : null,
+    starts_at: startsAt,
+    ends_at: null,
+    venue_name: v?.name?.trim().slice(0, 120) ?? null,
+    address: address ? address.slice(0, 200) : null,
+    latitude: lat,
+    longitude: lon,
+    url: e.url?.startsWith('http') ? e.url : null,
+    image_url: img,
+  };
+}
+
+const metersBetween = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/**
+ * Same show listed on two ticket sites: starts within 90 minutes at the same venue (within 300 m,
+ * or the same venue name when a location is missing). Two different events at one venue at the
+ * same time are rare enough to treat as one.
+ */
+export function isSameEvent(a: EventRow, b: EventRow): boolean {
+  if (Math.abs(Date.parse(a.starts_at) - Date.parse(b.starts_at)) > 90 * 60_000) return false;
+  if (a.latitude != null && a.longitude != null && b.latitude != null && b.longitude != null) {
+    return metersBetween({ latitude: a.latitude, longitude: a.longitude }, { latitude: b.latitude, longitude: b.longitude }) <= 300;
+  }
+  const norm = (s: string | null) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return !!a.venue_name && norm(a.venue_name) === norm(b.venue_name);
 }

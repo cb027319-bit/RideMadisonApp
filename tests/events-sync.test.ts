@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { chicagoToUtc, mapTicketmaster, type TmEvent } from '../supabase/functions/events-sync/map';
+import { chicagoToUtc, isSameEvent, mapSeatGeek, mapTicketmaster, type SgEvent, type TmEvent } from '../supabase/functions/events-sync/map';
 
 const base: TmEvent = {
   id: 'Z7r9jZ1A7',
@@ -50,4 +50,40 @@ test('mapTicketmaster: categories, cancelled, TBA, no-time all-day', () => {
 test('chicagoToUtc handles daylight saving', () => {
   assert.equal(chicagoToUtc('2026-07-04', '20:00:00'), '2026-07-05T01:00:00.000Z'); // CDT, UTC-5
   assert.equal(chicagoToUtc('2026-12-05', '20:00:00'), '2026-12-06T02:00:00.000Z'); // CST, UTC-6
+});
+
+const sg: SgEvent = {
+  id: 6012345,
+  title: ' Big Concert ',
+  url: 'https://seatgeek.com/big-concert-tickets/123',
+  datetime_utc: '2026-11-15T02:00:00',
+  type: 'concert',
+  taxonomies: [{ name: 'concert' }],
+  performers: [{ image: 'https://seatgeek.com/images/performers/1.jpg' }],
+  venue: { name: 'The Sylvee', address: '25 S Livingston St', city: 'Madison', state: 'WI', location: { lat: 43.0789, lon: -89.3746 } },
+};
+
+test('mapSeatGeek maps a concert', () => {
+  const row = mapSeatGeek(sg)!;
+  assert.equal(row.source, 'seatgeek');
+  assert.equal(row.source_id, '6012345');
+  assert.equal(row.title, 'Big Concert');
+  assert.equal(row.category, 'music');
+  assert.equal(row.starts_at, '2026-11-15T02:00:00.000Z');
+  assert.equal(row.address, '25 S Livingston St, Madison, WI');
+  assert.equal(row.latitude, 43.0789);
+});
+
+test('mapSeatGeek skips events without a date and sorts sports', () => {
+  assert.equal(mapSeatGeek({ ...sg, date_tbd: true }), null);
+  assert.equal(mapSeatGeek({ ...sg, type: 'ncaa_basketball', taxonomies: [{ name: 'sports' }] })!.category, 'sports');
+});
+
+test('isSameEvent spots a show listed on both sites', () => {
+  const a = mapSeatGeek(sg)!;
+  const b = { ...a, source: 'ticketmaster' as const, latitude: 43.0791, longitude: -89.3749, starts_at: '2026-11-15T01:30:00.000Z' };
+  assert.equal(isSameEvent(b, a), true);
+  assert.equal(isSameEvent({ ...b, starts_at: '2026-11-16T02:00:00.000Z' }, a), false);
+  assert.equal(isSameEvent({ ...b, latitude: 43.06, longitude: -89.4 }, a), false);
+  assert.equal(isSameEvent({ ...b, latitude: null, longitude: null, venue_name: 'the sylvee' }, a), true);
 });

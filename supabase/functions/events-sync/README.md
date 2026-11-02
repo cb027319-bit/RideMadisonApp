@@ -24,3 +24,11 @@ table (migration `0007_events.sql`) for the Events tab. Runs daily.
   arts, sports, food or family.
 - **Feature a paying partner's event**: set `featured` = true (shown first, labeled Featured).
 - **Hide a Ticketmaster event**: set `status` to `rejected`; the daily sync keeps it hidden.
+
+## SeatGeek (optional)
+
+1. Run `supabase/migrations/0008_events_seatgeek.sql` in the SQL Editor.
+2. When SeatGeek approves the app, add the secret `SEATGEEK_CLIENT_ID` (Edge Functions → Secrets).
+3. The next sync also pulls SeatGeek. Shows already listed on Ticketmaster (same venue, start within
+   90 minutes) are skipped. The result has a `seatgeek` line: fetched, added, or an error.
+   A SeatGeek error never stops the Ticketmaster import.

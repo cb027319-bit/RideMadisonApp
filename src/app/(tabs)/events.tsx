@@ -270,13 +270,18 @@ function EventDetail({
                 onPress={() => void Linking.openURL(e.url!)}
                 style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.8 }]}
                 accessibilityRole="link">
-                <Ionicons name={e.source === 'ticketmaster' ? 'ticket-outline' : 'open-outline'} size={20} color={c.primary} />
+                <Ionicons name={e.source === 'ticketmaster' || e.source === 'seatgeek' ? 'ticket-outline' : 'open-outline'} size={20} color={c.primary} />
                 <Text style={styles.linkText}>
-                  {e.source === 'ticketmaster' ? t('events.ticketmaster') : e.category === 'music' ? t('events.tickets') : t('events.moreInfo')}
+                  {e.source === 'ticketmaster'
+                    ? t('events.ticketmaster')
+                    : e.source === 'seatgeek'
+                      ? t('events.seatgeek')
+                      : e.category === 'music' ? t('events.tickets') : t('events.moreInfo')}
                 </Text>
               </Pressable>
             ) : null}
             {e.source === 'ticketmaster' ? <Text style={styles.attribution}>{t('events.fromTicketmaster')}</Text> : null}
+            {e.source === 'seatgeek' ? <Text style={styles.attribution}>{t('events.fromSeatgeek')}</Text> : null}
           </ScrollView>
         </View>
       )}
