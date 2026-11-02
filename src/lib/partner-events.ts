@@ -3,7 +3,9 @@
 // Pure; unit-tested in tests/partner-events.test.ts.
 
 export type PartnerEvent = 'impression' | 'open' | 'call' | 'website' | 'directions' | 'route' | 'offer';
-export type PartnerPlacement = 'pin' | 'trail_sponsor' | 'card' | 'trail' | 'nearby' | 'offer';
+export type PartnerPlacement = 'pin' | 'trail_sponsor' | 'card' | 'trail' | 'nearby' | 'offer' | 'events';
+
+export const PARTNER_PLACEMENTS: readonly PartnerPlacement[] = ['pin', 'trail_sponsor', 'card', 'trail', 'nearby', 'offer', 'events'];
 
 export const PARTNER_EVENTS: readonly PartnerEvent[] = ['impression', 'open', 'call', 'website', 'directions', 'route', 'offer'];
 
