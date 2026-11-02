@@ -34,3 +34,13 @@ testers in App Store Connect → TestFlight.
 ## Later updates
 
 Run the build + submit commands again. Build numbers go up automatically.
+
+## Quick fixes without a new build (over-the-air updates)
+
+Builds made after Nov 1, 2026 include EAS Update. For JavaScript-only changes (most fixes):
+
+`npx eas-cli@latest update --channel production --message "what changed"`
+
+Riders get it the next time they open the app (it downloads in the background and applies on
+the following launch). Native changes (new packages, app.json permissions, icons) still need a
+new build + submit.

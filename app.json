@@ -64,6 +64,12 @@
         "projectId": "1674b2e4-4114-4870-85c1-a39c2e92756a"
       }
     },
-    "owner": "cbbpr1919"
+    "owner": "cbbpr1919",
+    "updates": {
+      "url": "https://u.expo.dev/1674b2e4-4114-4870-85c1-a39c2e92756a"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }

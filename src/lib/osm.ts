@@ -311,13 +311,24 @@ export const OVERPASS_PATHS_TIMEOUT_MS = 30000;
 const isDev = () => typeof __DEV__ !== 'undefined' && __DEV__;
 
 /** Run an Overpass query against the public mirrors (first one that answers wins). */
-export async function overpassQuery(query: string): Promise<{ elements?: unknown[] }> {
-  return overpass(query);
+/** Optional tuning: per-server timeout and which servers to try, in order (the snapshot builder
+ *  gives each dataset a different first server so they don't queue behind each other). */
+export interface OverpassOpts {
+  timeoutMs?: number;
+  urls?: string[];
 }
 
-async function overpass(query: string, timeoutMs = OVERPASS_TIMEOUT_MS): Promise<{ elements?: OverpassElement[] }> {
+export async function overpassQuery(query: string, opts: OverpassOpts = {}): Promise<{ elements?: unknown[] }> {
+  return overpass(query, opts.timeoutMs, opts.urls);
+}
+
+async function overpass(
+  query: string,
+  timeoutMs = OVERPASS_TIMEOUT_MS,
+  urls: string[] = OVERPASS_URLS,
+): Promise<{ elements?: OverpassElement[] }> {
   const errors: string[] = [];
-  for (const url of OVERPASS_URLS) {
+  for (const url of urls) {
     const host = url.split('/')[2];
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -351,16 +362,16 @@ async function overpass(query: string, timeoutMs = OVERPASS_TIMEOUT_MS): Promise
   throw new Error(MAP_DATA_ERROR);
 }
 
-export async function fetchPaths(): Promise<BikePath[]> {
-  return parsePaths(await overpass(pathsQuery(), OVERPASS_PATHS_TIMEOUT_MS));
+export async function fetchPaths(opts: OverpassOpts = {}): Promise<BikePath[]> {
+  return parsePaths(await overpass(pathsQuery(), opts.timeoutMs ?? OVERPASS_PATHS_TIMEOUT_MS, opts.urls));
 }
 
-export async function fetchPlaces(): Promise<Place[]> {
-  return parsePlaces(await overpass(placesQuery()));
+export async function fetchPlaces(opts: OverpassOpts = {}): Promise<Place[]> {
+  return parsePlaces(await overpass(placesQuery(), opts.timeoutMs, opts.urls));
 }
 
-export async function fetchFood(kind: FoodKind): Promise<Place[]> {
-  const list = parsePlaces(await overpass(foodQuery(kind))).filter((p) => p.kind === kind);
+export async function fetchFood(kind: FoodKind, opts: OverpassOpts = {}): Promise<Place[]> {
+  const list = parsePlaces(await overpass(foodQuery(kind), opts.timeoutMs, opts.urls)).filter((p) => p.kind === kind);
   // Greater Madison always has hundreds of each: an empty answer means something went wrong.
   if (!list.length) {
     if (isDev()) console.warn(`Overpass: no ${kind} places came back`);

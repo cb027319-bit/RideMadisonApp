@@ -11,6 +11,7 @@ import { t } from './i18n';
 import { BCYCLE_REFRESH_MS, CACHE_TTL } from './config';
 import { fetchFood, fetchPaths, fetchPlaces, type BikePath, type FoodKind, type Place } from './osm';
 import { fetchParks, type Park } from './parks';
+import { snapshotFirst } from './snapshot';
 import { fetchPartners, type Partner } from './partners';
 import { groupTrails, type Trail } from './trails';
 
@@ -101,7 +102,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const loadOsm = useCallback(async (force: boolean) => {
     // Places first: small and quick, so pins appear before the path network.
-    const placesP = cached('places:v2', CACHE_TTL.places, fetchPlaces, { force })
+    const placesP = cached('places:v2', CACHE_TTL.places, snapshotFirst<Place>('places', fetchPlaces), { force })
       .then((r) => {
         setPlaces(r.value);
         setPlacesState('ready');
@@ -111,7 +112,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPlacesState('error');
         setLastError(`Places: ${e instanceof Error ? e.message : String(e)}`);
       });
-    const pathsP = cached('paths:v1', CACHE_TTL.paths, fetchPaths, { force })
+    const pathsP = cached('paths:v1', CACHE_TTL.paths, snapshotFirst<BikePath>('paths', fetchPaths), { force })
       .then((r) => {
         setPaths(r.value);
         setPathsState('ready');
@@ -121,7 +122,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPathsState('error');
         setLastError(`Paths: ${e instanceof Error ? e.message : String(e)}`);
       });
-    const parksP = cached('parks:v1', 30 * 24 * 3600 * 1000, fetchParks, { force })
+    const parksP = cached('parks:v1', 30 * 24 * 3600 * 1000, snapshotFirst<Park>('parks', fetchParks), { force })
       .then((r) => setParks(r.value))
       .catch(() => {});
     const partnersP = fetchPartners(force)
@@ -148,7 +149,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (!force && (foodState[kind] === 'loading' || foodState[kind] === 'ready')) continue;
         setFoodState((s) => ({ ...s, [kind]: 'loading' }));
         setFoodError((s) => ({ ...s, [kind]: null }));
-        cached(`${kind}:v2`, CACHE_TTL.places, () => fetchFood(kind), { force })
+        cached(`${kind}:v2`, CACHE_TTL.places, snapshotFirst<Place>(kind, () => fetchFood(kind)), { force })
           .then((r) => {
             setFood((f) => ({ ...f, [kind]: r.value }));
             setFoodState((s) => ({ ...s, [kind]: 'ready' }));

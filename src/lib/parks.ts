@@ -2,7 +2,7 @@
 // inside each park (loaded when a park is opened). Data: OpenStreetMap.
 
 import { LINE_STYLE, type LineStyle } from './labels';
-import { overpassQuery, UNPAVED } from './osm';
+import { overpassQuery, UNPAVED, type OverpassOpts } from './osm';
 import { bboxOf, round5, simplify, type BBox, type LonLat } from './geo';
 import { lineLengthM } from './trails';
 
@@ -144,8 +144,8 @@ export function parseParkTrails(json: { elements?: El[] }): ParkTrail[] {
   return out.filter((t) => t.lengthM >= 100).sort((a, b) => rank[a.access] - rank[b.access] || b.lengthM - a.lengthM);
 }
 
-export async function fetchParks(): Promise<Park[]> {
-  return parseParks((await overpassQuery(parksQuery())) as { elements?: El[] });
+export async function fetchParks(opts: OverpassOpts = {}): Promise<Park[]> {
+  return parseParks((await overpassQuery(parksQuery(), opts)) as { elements?: El[] });
 }
 
 export async function fetchParkTrails(p: Park): Promise<ParkTrail[]> {
