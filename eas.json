@@ -14,6 +14,10 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleTeamId": "C9H96YNMB7"
+      }
+    }
   }
 }
