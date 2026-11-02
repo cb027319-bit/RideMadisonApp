@@ -3,8 +3,8 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Alert, FlatList, Keyboard, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text,
-  TextInput, View,
+  AccessibilityInfo, ActivityIndicator, Alert, Animated, FlatList, Keyboard, LayoutAnimation, Linking, Modal, PanResponder, Platform, Pressable,
+  ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import MapView, { Marker, Polyline, type LongPressEvent, type MapPressEvent } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,6 +59,45 @@ export default function RouteScreen() {
   const [showDirections, setShowDirections] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelHeight, setPanelHeight] = useState(0);
+
+  // Panel drag: the panel follows the finger, then springs open or closed on release.
+  const [dragY] = useState(() => new Animated.Value(0));
+  const setPanel = (open: boolean) => {
+    LayoutAnimation.configureNext({
+      duration: 260,
+      update: { type: LayoutAnimation.Types.spring, springDamping: 0.85 },
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    });
+    setPanelOpen(open);
+  };
+  // The responder is created once; it reads the latest open state and setter through this ref.
+  const panelState = useRef({ open: panelOpen, setPanel });
+  useEffect(() => {
+    panelState.current = { open: panelOpen, setPanel };
+  });
+  // eslint-disable-next-line react-hooks/refs -- panelState is only read inside gesture callbacks, never during render
+  const [panelPan] = useState(() => {
+    const settle = () => Animated.spring(dragY, { toValue: 0, useNativeDriver: true, speed: 22, bounciness: 3 }).start();
+    return PanResponder.create({
+      // Only claim clear vertical drags, so taps on the handle and buttons still work.
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderGrant: () => dragY.stopAnimation(),
+      onPanResponderMove: (_, g) => {
+        const open = panelState.current.open;
+        // Follow the finger toward the other state; resist (and cap) the other direction.
+        const dy = open ? (g.dy > 0 ? g.dy : Math.max(g.dy * 0.15, -16)) : g.dy < 0 ? Math.max(g.dy * 0.35, -48) : g.dy * 0.15;
+        dragY.setValue(dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        const { open, setPanel: set } = panelState.current;
+        if (open ? g.dy > 40 || g.vy > 0.35 : g.dy < -20 || g.vy < -0.35) set(!open);
+        settle();
+      },
+      onPanResponderTerminate: settle,
+      onPanResponderTerminationRequest: () => false,
+    });
+  });
   const [snack, setSnack] = useState<SnackbarMessage | null>(null);
   const toast = (text: string, actionLabel?: string, onAction?: () => void) =>
     setSnack({ id: Date.now(), text, actionLabel, onAction });
@@ -352,14 +391,19 @@ export default function RouteScreen() {
       </SafeAreaView>
 
       {/* Planner panel */}
-      <View style={styles.panel} onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}>
+      <Animated.View
+        style={[styles.panel, { transform: [{ translateY: dragY }] }]}
+        onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}>
+        {/* Drag zone: the handle and the summary below it. */}
+        <View {...panelPan.panHandlers}>
         <Pressable
-          onPress={() => setPanelOpen((o) => !o)}
+          onPress={() => setPanel(!panelOpen)}
           style={styles.handleArea}
-          hitSlop={{ top: 8, bottom: 8, left: 60, right: 60 }}
+          hitSlop={{ top: 12, bottom: 4 }}
           accessibilityRole="button"
           accessibilityLabel={panelOpen ? t('route.panelCollapse') : t('route.panelExpand')}>
           <View style={styles.handle} />
+          {!panelOpen && route.stops.length > 0 && <Ionicons name="chevron-up" size={16} color={c.textFaint} style={styles.handleChevron} />}
         </Pressable>
 
         <View style={styles.summaryArea}>
@@ -392,6 +436,7 @@ export default function RouteScreen() {
                   : t('route.addOneMore')}
             </Text>
           )}
+        </View>
         </View>
 
         {route.stops.length > 0 && panelOpen && (
@@ -549,7 +594,7 @@ export default function RouteScreen() {
             )}
           </ScrollView>
         )}
-      </View>
+      </Animated.View>
 
       <Snackbar message={snack} onDismiss={() => setSnack(null)} bottom={panelHeight + 12} />
 
@@ -898,8 +943,9 @@ const useStyles = makeStyles((c) => ({
     position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: c.surface,
     borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingHorizontal: 16, paddingBottom: 12, ...shadow,
   },
-  handleArea: { alignSelf: 'center', minHeight: 28, minWidth: 88, alignItems: 'center', justifyContent: 'center' },
+  handleArea: { alignSelf: 'stretch', minHeight: 32, alignItems: 'center', justifyContent: 'center' },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: c.textFaint },
+  handleChevron: { marginTop: -2, marginBottom: -6 },
   summaryArea: { alignItems: 'center', gap: 8, paddingBottom: 10 },
   summary: { fontSize: 19, fontFamily: FONT.black, color: c.text, textAlign: 'center' },
   startRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
