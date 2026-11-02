@@ -16,6 +16,6 @@ Edge Functions → map-data → Test (top right) → Send request (POST, empty b
 ## Refresh daily (Supabase Cron)
 Integrations → Cron → (enable if asked) → Create job:
 - Name: `refresh-map-data`
-- Schedule: `0 9 * * *` (09:00 UTC = early morning in Madison)
+- Schedule: `0 * * * *` (every hour; each run refreshes one stale dataset)
 - Type: Supabase Edge Function → `map-data`, method POST
-Calls within 6 hours of the last refresh are skipped automatically; add `?force=1` to the URL to force one.
+Each run refreshes the dataset that is missing or older than 20 hours, so all five stay fresh daily and failed ones retry an hour later.
