@@ -23,7 +23,7 @@ export const OVERPASS_URLS = [
 ];
 
 /** Identify the app to public servers (some reject anonymous clients). */
-export const USER_AGENT = 'RideMadison/0.1 (+https://ridemadison.com)';
+export const USER_AGENT = 'RideMadison/1.0 (https://ridemadison.com; hello@ridemadison.com)';
 
 export const CACHE_TTL = {
   paths: 7 * 24 * 3600 * 1000,

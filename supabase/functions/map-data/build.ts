@@ -14,9 +14,11 @@
 // bundles this file + those modules into dashboard-paste.ts for the Supabase editor.
 
 import { OVERPASS_URLS } from '../../../src/lib/config';
-import { fetchFood, fetchPaths, fetchPlaces } from '../../../src/lib/osm';
-import { fetchParks } from '../../../src/lib/parks';
+import { fetchFood, fetchPaths, fetchPlaces, parsePaths, parsePlaces } from '../../../src/lib/osm';
+import { fetchParks, parseParks } from '../../../src/lib/parks';
 
+// Supabase's runtime: keeps background work alive after the response is sent.
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (req: Request) => Response | Promise<Response>): void;
@@ -37,8 +39,10 @@ const race = (fetcher: (o: Opts) => Promise<unknown[]>) =>
       if (!list.length) throw new Error('empty');
       return list;
     }),
-  ).catch(() => {
-    throw new Error('every Overpass server failed or timed out');
+  ).catch((e: unknown) => {
+    const errs = e instanceof AggregateError ? e.errors : [e];
+    const detail = errs.map((x: { detail?: string; message?: string }) => x?.detail ?? x?.message ?? String(x)).join(' | ');
+    throw new Error(`every Overpass server failed: ${detail}`);
   });
 
 const DATASETS: Record<string, () => Promise<unknown[]>> = {
@@ -49,10 +53,27 @@ const DATASETS: Record<string, () => Promise<unknown[]>> = {
   drink: () => race((o) => fetchFood('drink', o)),
 };
 
+// Manual upload: POST raw Overpass JSON with header x-snapshot-token (matching the
+// SNAPSHOT_TOKEN secret) and ?only=<dataset>. Used when Overpass refuses Supabase's servers.
+type Raw = { elements?: never[] };
+const PARSERS: Record<string, (raw: Raw) => unknown[]> = {
+  paths: (r) => parsePaths(r),
+  places: (r) => parsePlaces(r),
+  parks: (r) => parseParks(r),
+  food: (r) => parsePlaces(r).filter((p) => p.kind === 'food'),
+  drink: (r) => parsePlaces(r).filter((p) => p.kind === 'drink'),
+};
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'content-type, x-snapshot-token, authorization, apikey',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body, null, 1), { status, headers: { 'Content-Type': 'application/json' } });
+  new Response(JSON.stringify(body, null, 1), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !key) return json({ error: 'Server not configured' }, 500);
@@ -60,6 +81,30 @@ Deno.serve(async (req) => {
   const params = new URL(req.url).searchParams;
   const force = params.get('force') === '1';
   const only = params.get('only');
+
+  const upload = async (name: string, data: unknown[]) => {
+    const up = await fetch(`${supabaseUrl}/storage/v1/object/${BUCKET}/${name}.json`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json', 'x-upsert': 'true', 'cache-control': 'max-age=3600' },
+      body: JSON.stringify({ savedAt: new Date().toISOString(), data }),
+    });
+    if (!up.ok) throw new Error(`upload ${up.status}: ${(await up.text()).slice(0, 120)}`);
+  };
+
+  const token = req.headers.get('x-snapshot-token');
+  if (token !== null) {
+    const expected = Deno.env.get('SNAPSHOT_TOKEN');
+    if (!expected || token !== expected) return json({ error: 'Not allowed' }, 403);
+    if (!only || !PARSERS[only]) return json({ error: 'Add ?only=paths|places|parks|food|drink' }, 400);
+    try {
+      const data = PARSERS[only]((await req.json()) as Raw);
+      if (!data.length) throw new Error('nothing parsed');
+      await upload(only, data);
+      return json({ results: [{ name: only, count: data.length, uploaded: true }] });
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  }
 
   // Make sure the public bucket exists (ignore "already exists").
   await fetch(`${supabaseUrl}/storage/v1/bucket`, {
@@ -83,9 +128,8 @@ Deno.serve(async (req) => {
     if (!stale.length) return json({ results: [], note: 'all datasets fresh' });
     names = [stale[0].n];
   }
-  const results = await Promise.all(
+  const run = Promise.all(
     names.map(async (name) => {
-      const fileUrl = `${supabaseUrl}/storage/v1/object/${BUCKET}/${name}.json`;
       if (!force) {
         const head = await fetch(`${supabaseUrl}/storage/v1/object/public/${BUCKET}/${name}.json`, { method: 'HEAD' }).catch(() => null);
         const modified = head?.ok ? Date.parse(head.headers.get('last-modified') ?? '') : NaN;
@@ -95,17 +139,18 @@ Deno.serve(async (req) => {
         const started = Date.now();
         const data = await DATASETS[name]();
         if (!data.length) throw new Error('empty');
-        const up = await fetch(fileUrl, {
-          method: 'POST',
-          headers: { ...auth, 'Content-Type': 'application/json', 'x-upsert': 'true', 'cache-control': 'max-age=3600' },
-          body: JSON.stringify({ savedAt: new Date().toISOString(), data }),
-        });
-        if (!up.ok) throw new Error(`upload ${up.status}: ${(await up.text()).slice(0, 120)}`);
+        await upload(name, data);
         return { name, count: data.length, seconds: Math.round((Date.now() - started) / 1000) };
       } catch (e) {
         return { name, error: e instanceof Error ? e.message : String(e) };
       }
     }),
   );
-  return json({ results });
+  // Scheduled runs (no ?only=) answer at once and finish in the background: the scheduler
+  // only waits a few seconds for a reply.
+  if (!only && typeof EdgeRuntime !== 'undefined') {
+    EdgeRuntime.waitUntil(run);
+    return json({ started: names }, 202);
+  }
+  return json({ results: await run });
 });

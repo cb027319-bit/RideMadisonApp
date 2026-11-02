@@ -337,8 +337,11 @@ async function overpass(
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
+          // overpass-api.de answers 406 unless the client identifies itself (descriptive
+          // User-Agent + Referer) and sends a broad Accept header.
+          Accept: '*/*',
           'User-Agent': USER_AGENT,
+          Referer: 'https://ridemadison.com/',
         },
         body: `data=${encodeURIComponent(query)}`,
         signal: controller.signal,
@@ -359,7 +362,8 @@ async function overpass(
     }
   }
   if (isDev()) console.warn(`Overpass failed: ${errors.join(' | ')}`);
-  throw new Error(MAP_DATA_ERROR);
+  // Keep the per-server reasons on the error (the snapshot builder reports them).
+  throw Object.assign(new Error(MAP_DATA_ERROR), { detail: errors.join(' | ') });
 }
 
 export async function fetchPaths(opts: OverpassOpts = {}): Promise<BikePath[]> {
