@@ -29,6 +29,7 @@ const COLLECTED: Key[] = [
   'more.collectStyle',
   'more.collectTaps',
   'more.collectEvents',
+  'more.collectUsage',
 ];
 
 const GUIDES: { title: Key; body: Key; link?: { label: Key; url: string } }[] = [

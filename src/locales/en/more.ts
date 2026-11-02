@@ -60,6 +60,7 @@ export const more = {
   'more.collectStyle': 'Your riding style (bike type and traffic comfort)',
   'more.collectTaps': 'Taps on local business listings, linked to your account when you’re signed in',
   'more.collectEvents': 'Events you submit: the title, details and your contact email (only Ride Madison sees the email). We review each event before it’s published. Withdraw one any time in Events → Your events. Deleting your account deletes them; events already published stay listed, without your email or account.',
+  'more.collectUsage': 'Anonymous usage stats, like which screens and features you use and rounded route distances, unless you switch off Share anonymous usage stats. Never your location, routes, searches, name or email.',
   'more.privacyLocation': 'Your location stays on your phone, except the points needed to plan a route (sent to the BRouter routing service, brouter.de) and to search for places near you (Photon search, photon.komoot.io). We never sell your data.',
   'more.privacyEvents': 'Some event listings come from Ticketmaster and SeatGeek. A ticket link opens their site, which has its own privacy policy.',
   'more.privacyPolicy': 'Privacy Policy',

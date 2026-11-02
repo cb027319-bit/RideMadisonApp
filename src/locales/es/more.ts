@@ -63,6 +63,7 @@ export const more: Dict<typeof en> = {
   'more.collectStyle': 'Tu estilo de ciclismo (tipo de bici y comodidad con el tráfico)',
   'more.collectTaps': 'Los toques en anuncios de negocios locales, vinculados a tu cuenta si iniciaste sesión',
   'more.collectEvents': 'Los eventos que envías: el título, los detalles y tu correo de contacto (solo Ride Madison ve el correo). Revisamos cada evento antes de publicarlo. Puedes retirarlo cuando quieras en Eventos → Tus eventos. Si eliminas tu cuenta, se eliminan; los que ya están publicados siguen en la lista, sin tu correo ni tu cuenta.',
+  'more.collectUsage': 'Estadísticas de uso anónimas, como las pantallas y funciones que usas y la distancia redondeada de tus rutas, a menos que desactives Compartir estadísticas de uso anónimas. Nunca tu ubicación, tus rutas, tus búsquedas, tu nombre ni tu correo.',
   'more.privacyLocation': 'Tu ubicación se queda en tu teléfono, excepto los puntos necesarios para planear una ruta (se envían al servicio de rutas BRouter, brouter.de) y para buscar lugares cerca de ti (búsqueda Photon, photon.komoot.io). Nunca vendemos tus datos.',
   'more.privacyEvents': 'Algunos eventos vienen de Ticketmaster y SeatGeek. Un enlace de boletos abre su sitio, que tiene su propia política de privacidad.',
   'more.privacyPolicy': 'Política de privacidad',
