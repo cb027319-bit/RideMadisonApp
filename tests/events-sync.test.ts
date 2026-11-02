@@ -2,7 +2,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { chicagoToUtc, isSameEvent, mapSeatGeek, mapTicketmaster, type SgEvent, type TmEvent } from '../supabase/functions/events-sync/map';
+import {
+  chicagoToUtc,
+  isSameEvent,
+  mapSeatGeek,
+  mapTicketmaster,
+  priceFields,
+  type SgEvent,
+  type TmEvent,
+} from '../supabase/functions/events-sync/map';
+import { IN_PROGRESS_MS, MIN_GAP_MS, throttleDecision, tokenMatches } from '../supabase/functions/events-sync/throttle';
 
 const base: TmEvent = {
   id: 'Z7r9jZ1A7',
@@ -86,4 +95,125 @@ test('isSameEvent spots a show listed on both sites', () => {
   assert.equal(isSameEvent({ ...b, starts_at: '2026-11-16T02:00:00.000Z' }, a), false);
   assert.equal(isSameEvent({ ...b, latitude: 43.06, longitude: -89.4 }, a), false);
   assert.equal(isSameEvent({ ...b, latitude: null, longitude: null, venue_name: 'the sylvee' }, a), true);
+});
+
+// ---------- prices ----------
+
+test('mapTicketmaster: USD price ranges become price_min/price_max', () => {
+  const r = mapTicketmaster({
+    ...base,
+    priceRanges: [
+      { type: 'standard', currency: 'USD', min: 25, max: 79.5 },
+      { type: 'standard including fees', currency: 'USD', min: 31.4, max: 92.123 },
+      { type: 'standard', currency: 'CAD', min: 5, max: 500 },
+    ],
+  })!;
+  assert.equal(r.price_min, 25);
+  assert.equal(r.price_max, 92.12);
+  assert.equal(r.is_free, null);
+});
+
+test('mapTicketmaster: no USD price → unknown; all zero → free', () => {
+  const none = mapTicketmaster(base)!;
+  assert.deepEqual([none.price_min, none.price_max, none.is_free], [null, null, null]);
+  const cad = mapTicketmaster({ ...base, priceRanges: [{ currency: 'CAD', min: 10, max: 20 }] })!;
+  assert.deepEqual([cad.price_min, cad.price_max, cad.is_free], [null, null, null]);
+  const free = mapTicketmaster({ ...base, priceRanges: [{ currency: 'USD', min: 0, max: 0 }] })!;
+  assert.deepEqual([free.price_min, free.price_max, free.is_free], [0, 0, true]);
+  const fromZero = mapTicketmaster({ ...base, priceRanges: [{ currency: 'USD', min: 0, max: 15 }] })!;
+  assert.equal(fromZero.is_free, null);
+});
+
+test('priceFields ignores bad values and keeps one price', () => {
+  assert.deepEqual(priceFields([NaN, -5, 1e7, undefined, null]), { price_min: null, price_max: null, is_free: null });
+  assert.deepEqual(priceFields([40]), { price_min: 40, price_max: 40, is_free: null });
+  assert.deepEqual(priceFields([60, 18]), { price_min: 18, price_max: 60, is_free: null });
+});
+
+test('mapSeatGeek: stats lowest/highest price', () => {
+  const r = mapSeatGeek({ ...sg, stats: { lowest_price: 42, highest_price: 310 } })!;
+  assert.equal(r.price_min, 42);
+  assert.equal(r.price_max, 310);
+  assert.equal(r.is_free, null);
+  const none = mapSeatGeek({ ...sg, stats: { lowest_price: null, highest_price: null } })!;
+  assert.deepEqual([none.price_min, none.price_max, none.is_free], [null, null, null]);
+  assert.equal(mapSeatGeek(sg)!.price_min, null);
+});
+
+// ---------- family as an extra category ----------
+
+test('mapTicketmaster: family genre/subGenre/segment adds family to extra_categories', () => {
+  assert.deepEqual(mapTicketmaster(base)!.extra_categories, []);
+  const sub = mapTicketmaster({
+    ...base,
+    classifications: [{ segment: { name: 'Arts & Theatre' }, genre: { name: 'Theatre' }, subGenre: { name: "Children's Theatre" } }],
+  })!;
+  assert.equal(sub.category, 'arts');
+  assert.deepEqual(sub.extra_categories, ['family']);
+  const music = mapTicketmaster({
+    ...base,
+    classifications: [{ segment: { name: 'Music' }, genre: { name: 'Children\'s Music' } }],
+  })!;
+  assert.equal(music.category, 'music');
+  assert.deepEqual(music.extra_categories, ['family']);
+  const flagged = mapTicketmaster({ ...base, classifications: [{ segment: { name: 'Sports' }, family: true }] })!;
+  assert.deepEqual(flagged.extra_categories, ['family']);
+  // Main category already family: no repeat.
+  const fam = mapTicketmaster({ ...base, classifications: [{ segment: { name: 'Miscellaneous' }, genre: { name: 'Family' } }] })!;
+  assert.equal(fam.category, 'family');
+  assert.deepEqual(fam.extra_categories, []);
+});
+
+test('mapSeatGeek: family taxonomy adds family to extra_categories', () => {
+  assert.deepEqual(mapSeatGeek(sg)!.extra_categories, []);
+  const show = mapSeatGeek({ ...sg, type: 'concert', taxonomies: [{ name: 'concert' }, { name: 'family' }] })!;
+  assert.equal(show.category, 'music');
+  assert.deepEqual(show.extra_categories, ['family']);
+  const fam = mapSeatGeek({ ...sg, type: 'family', taxonomies: [{ name: 'family' }] })!;
+  assert.equal(fam.category, 'family');
+  assert.deepEqual(fam.extra_categories, []);
+});
+
+// ---------- throttle ----------
+
+const NOW = Date.parse('2026-11-02T15:00:00Z');
+const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+test('throttle: first run and runs 20+ minutes apart are allowed', () => {
+  assert.deepEqual(throttleDecision({ now: NOW }), { run: true, bypass: false });
+  assert.deepEqual(throttleDecision({ now: NOW, lastSuccess: ago(MIN_GAP_MS) }), { run: true, bypass: false });
+  assert.deepEqual(throttleDecision({ now: NOW, lastSuccess: 'garbage' }), { run: true, bypass: false });
+});
+
+test('throttle: a run less than 20 minutes after a success gets refused with retry time', () => {
+  const d = throttleDecision({ now: NOW, lastSuccess: ago(5 * 60_000) });
+  assert.deepEqual(d, { run: false, retryAfterSec: 15 * 60 });
+});
+
+test('throttle: a run still in progress blocks for 3 minutes; finished starts do not', () => {
+  assert.equal(throttleDecision({ now: NOW, lastStart: ago(60_000) }).run, false);
+  assert.equal(throttleDecision({ now: NOW, lastStart: ago(IN_PROGRESS_MS + 1) }).run, true);
+  // Started before the last success (that run finished): only the 20-minute rule applies.
+  assert.equal(
+    throttleDecision({ now: NOW, lastStart: ago(MIN_GAP_MS + 60_000), lastSuccess: ago(MIN_GAP_MS + 30_000) }).run,
+    true,
+  );
+});
+
+test('throttle: future timestamps count as now', () => {
+  const d = throttleDecision({ now: NOW, lastSuccess: new Date(NOW + 86_400_000).toISOString() });
+  assert.deepEqual(d, { run: false, retryAfterSec: MIN_GAP_MS / 1000 });
+});
+
+test('throttle: the right x-sync-token always runs; a wrong or missing secret does not bypass', () => {
+  const recent = ago(60_000);
+  assert.deepEqual(throttleDecision({ now: NOW, lastSuccess: recent, token: 's3cret', secret: 's3cret' }), {
+    run: true,
+    bypass: true,
+  });
+  assert.equal(throttleDecision({ now: NOW, lastSuccess: recent, token: 's3creT', secret: 's3cret' }).run, false);
+  assert.equal(throttleDecision({ now: NOW, lastSuccess: recent, token: '', secret: '' }).run, false);
+  assert.equal(throttleDecision({ now: NOW, lastSuccess: recent, token: 'x', secret: undefined }).run, false);
+  assert.equal(tokenMatches('abc', 'abcd'), false);
+  assert.equal(tokenMatches(null, 'abc'), false);
 });

@@ -23,7 +23,13 @@ const PRIVACY_URL = 'https://ridemadison.com/privacy';
 const TERMS_URL = 'https://ridemadison.com/terms';
 const PARTNERS_EMAIL = 'mailto:hello@ridemadison.com?subject=Advertising%20on%20Ride%20Madison';
 
-const COLLECTED: Key[] = ['more.collectAccount', 'more.collectRides', 'more.collectStyle', 'more.collectTaps'];
+const COLLECTED: Key[] = [
+  'more.collectAccount',
+  'more.collectRides',
+  'more.collectStyle',
+  'more.collectTaps',
+  'more.collectEvents',
+];
 
 const GUIDES: { title: Key; body: Key; link?: { label: Key; url: string } }[] = [
   {
@@ -243,6 +249,7 @@ export default function AboutScreen() {
         </View>
       ))}
       <Text style={styles.p}>{t('more.privacyLocation')}</Text>
+      <Text style={styles.p}>{t('more.privacyEvents')}</Text>
       <LinkRow icon="shield-checkmark-outline" label={t('more.privacyPolicy')} onPress={() => void Linking.openURL(PRIVACY_URL)} />
       <LinkRow icon="document-text-outline" label={t('more.terms')} onPress={() => void Linking.openURL(TERMS_URL)} />
 

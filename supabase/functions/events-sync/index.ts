@@ -5,10 +5,15 @@
 // for the next 60 days. SeatGeek shows already listed on Ticketmaster are skipped. Run daily.
 // Events you've set to 'rejected' in Table Editor stay hidden; cancelled events are hidden too.
 //
-// Secrets: TICKETMASTER_API_KEY, optional SEATGEEK_CLIENT_ID (Edge Functions → Secrets). Provided automatically: SUPABASE_URL,
-// SUPABASE_SERVICE_ROLE_KEY. scripts/build-events-sync-function.mjs bundles this into dashboard-paste.ts.
+// Throttled (throttle.ts): a run less than 20 minutes after the last successful one gets 429, unless the
+// request has header x-sync-token = the SNAPSHOT_TOKEN secret. The daily cron is unaffected.
+//
+// Secrets: TICKETMASTER_API_KEY, optional SEATGEEK_CLIENT_ID, SNAPSHOT_TOKEN (Edge Functions → Secrets). Provided
+// automatically: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY. scripts/build-events-sync-function.mjs bundles this into
+// dashboard-paste.ts. Needs migration 0010 (price columns, sync_state).
 
 import { isSameEvent, mapSeatGeek, mapTicketmaster, type EventRow, type SgEvent, type TmEvent } from './map';
+import { SYNC_KEY, SYNC_START_KEY, throttleDecision } from './throttle';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 declare const Deno: {
@@ -22,8 +27,43 @@ const DAYS_AHEAD = 60;
 const PAGE_SIZE = 200;
 const MAX_PAGES = 5;
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body, null, 1), { status, headers: { 'Content-Type': 'application/json' } });
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body, null, 1), { status, headers: { ...headers, 'Content-Type': 'application/json' } });
+
+type Auth = { apikey: string; Authorization: string };
+
+/** last_run per sync_state key (migration 0010). Unreadable → empty, so the daily cron never gets stuck. */
+async function readSyncState(supabaseUrl: string, auth: Auth): Promise<Record<string, string | null>> {
+  try {
+    const keys = [SYNC_KEY, SYNC_START_KEY].map((k) => `"${k}"`).join(',');
+    const res = await fetch(`${supabaseUrl}/rest/v1/sync_state?key=in.(${encodeURIComponent(keys)})&select=key,last_run`, {
+      headers: auth,
+    });
+    if (!res.ok) {
+      console.error('events-sync: could not read sync_state', res.status, (await res.text()).slice(0, 160));
+      return {};
+    }
+    const rows = (await res.json()) as { key: string; last_run: string | null }[];
+    return Object.fromEntries(rows.map((r) => [r.key, r.last_run]));
+  } catch (e) {
+    console.error('events-sync: could not read sync_state', e);
+    return {};
+  }
+}
+
+/** Upsert last_run = now for a sync_state key. Failures are logged, never fatal. */
+async function markSyncState(supabaseUrl: string, auth: Auth, key: string): Promise<void> {
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/sync_state?on_conflict=key`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ key, last_run: new Date().toISOString() }),
+    });
+    if (!res.ok) console.error('events-sync: could not save sync_state', key, res.status, (await res.text()).slice(0, 160));
+  } catch (e) {
+    console.error('events-sync: could not save sync_state', key, e);
+  }
+}
 
 const tmDate = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
@@ -81,8 +121,7 @@ async function fetchSeatGeek(clientId: string): Promise<SgEvent[]> {
   return out;
 }
 
-async function sync(supabaseUrl: string, key: string, apiKey: string, seatGeekId?: string) {
-  const auth = { apikey: key, Authorization: `Bearer ${key}` };
+async function sync(supabaseUrl: string, auth: Auth, apiKey: string, seatGeekId?: string) {
   const raw = await fetchTicketmaster(apiKey);
   const rows: EventRow[] = [];
   const seen = new Set<string>();
@@ -132,6 +171,7 @@ async function sync(supabaseUrl: string, key: string, apiKey: string, seatGeekId
     });
     if (!up.ok) throw new Error(`save ${up.status}: ${(await up.text()).slice(0, 200)}`);
   }
+  await markSyncState(supabaseUrl, auth, SYNC_KEY);
   return { fetched: raw.length, saved: rows.length, hidden: rows.filter((r) => r.status === 'rejected').length, seatgeek };
 }
 
@@ -141,8 +181,22 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get('TICKETMASTER_API_KEY');
   if (!supabaseUrl || !key) return json({ error: 'Server not configured' }, 500);
   if (!apiKey) return json({ error: 'Add the TICKETMASTER_API_KEY secret first' }, 500);
+  const auth: Auth = { apikey: key, Authorization: `Bearer ${key}` };
 
-  const run = sync(supabaseUrl, key, apiKey, Deno.env.get('SEATGEEK_CLIENT_ID') || undefined);
+  const state = await readSyncState(supabaseUrl, auth);
+  const decision = throttleDecision({
+    lastSuccess: state[SYNC_KEY],
+    lastStart: state[SYNC_START_KEY],
+    now: Date.now(),
+    token: req.headers.get('x-sync-token'),
+    secret: Deno.env.get('SNAPSHOT_TOKEN'),
+  });
+  if (!decision.run) {
+    return json({ error: 'Ran recently' }, 429, { 'Retry-After': String(decision.retryAfterSec) });
+  }
+  await markSyncState(supabaseUrl, auth, SYNC_START_KEY);
+
+  const run = sync(supabaseUrl, auth, apiKey, Deno.env.get('SEATGEEK_CLIENT_ID') || undefined);
   // Scheduled runs answer at once and finish in the background (the scheduler only waits a few seconds).
   // Test with ?wait=1 to see the result.
   if (new URL(req.url).searchParams.get('wait') !== '1' && typeof EdgeRuntime !== 'undefined') {

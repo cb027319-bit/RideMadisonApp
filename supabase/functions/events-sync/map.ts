@@ -8,6 +8,14 @@ export interface TmVenue {
   location?: { latitude?: string; longitude?: string };
 }
 
+export interface TmClassification {
+  segment?: { name?: string };
+  genre?: { name?: string };
+  subGenre?: { name?: string };
+  /** Ticketmaster's own "family event" flag. */
+  family?: boolean;
+}
+
 export interface TmEvent {
   id: string;
   name: string;
@@ -17,7 +25,8 @@ export interface TmEvent {
     start?: { localDate?: string; localTime?: string; dateTime?: string; dateTBD?: boolean; dateTBA?: boolean; noSpecificTime?: boolean };
     status?: { code?: string };
   };
-  classifications?: { segment?: { name?: string }; genre?: { name?: string } }[];
+  classifications?: TmClassification[];
+  priceRanges?: { type?: string; currency?: string; min?: number; max?: number }[];
   images?: { url: string; width?: number; ratio?: string }[];
   _embedded?: { venues?: TmVenue[] };
 }
@@ -37,6 +46,60 @@ export interface EventRow {
   longitude: number | null;
   url: string | null;
   image_url: string | null;
+  /** USD, null = unknown (migration 0010). */
+  price_min: number | null;
+  price_max: number | null;
+  /** true only when every listed price is 0; otherwise unknown (null). */
+  is_free: boolean | null;
+  /** 'family' when the source marks a non-family event as for families or children. */
+  extra_categories: Category[];
+}
+
+type Category = EventRow['category'];
+
+/** Highest price we store (the column is numeric(8,2)); anything above is bad data. */
+const MAX_PRICE = 99_999;
+
+/** Prices from a ticketing site → price_min/price_max/is_free. Bad or missing values → unknown. */
+export function priceFields(values: (number | null | undefined)[]): Pick<EventRow, 'price_min' | 'price_max' | 'is_free'> {
+  const ok = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= MAX_PRICE);
+  if (!ok.length) return { price_min: null, price_max: null, is_free: null };
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const min = round(Math.min(...ok));
+  const max = round(Math.max(...ok));
+  return { price_min: min, price_max: max, is_free: min === 0 && max === 0 ? true : null };
+}
+
+/** Ticketmaster priceRanges, US dollars only. */
+export function tmPrices(e: TmEvent): Pick<EventRow, 'price_min' | 'price_max' | 'is_free'> {
+  const usd = (e.priceRanges ?? []).filter((r) => (r.currency ?? '').toUpperCase() === 'USD');
+  return priceFields(usd.flatMap((r) => [r.min, r.max]));
+}
+
+/** SeatGeek stats.lowest_price / highest_price (SeatGeek prices are US dollars). */
+export function sgPrices(e: SgEvent): Pick<EventRow, 'price_min' | 'price_max' | 'is_free'> {
+  return priceFields([e.stats?.lowest_price, e.stats?.highest_price]);
+}
+
+const FAMILY = /\b(family|families|children|childrens|kids)\b/i;
+
+const familyExtra = (main: Category, isFamily: boolean): Category[] =>
+  isFamily && main !== 'family' ? ['family'] : [];
+
+/** Any Ticketmaster classification for families or children. */
+export function tmIsFamily(e: TmEvent): boolean {
+  return (e.classifications ?? []).some(
+    (c) =>
+      c.family === true ||
+      [c.segment?.name, c.genre?.name, c.subGenre?.name].some((n) => !!n && FAMILY.test(n.replace(/'/g, ''))),
+  );
+}
+
+/** A SeatGeek type or taxonomy for families or children. */
+export function sgIsFamily(e: SgEvent): boolean {
+  return [e.type, ...(e.taxonomies ?? []).map((x) => x.name)].some(
+    (n) => !!n && FAMILY.test(n.replace(/[_-]/g, ' ').replace(/'/g, '')),
+  );
 }
 
 /** "GMT-5" → -300. Madison is on Central time. */
@@ -92,11 +155,12 @@ export function mapTicketmaster(e: TmEvent): EventRow | null {
   const endsAt = allDay ? new Date(new Date(startsAt).getTime() + 86_400_000).toISOString() : null;
   const v = e._embedded?.venues?.[0];
   const address = [v?.address?.line1, v?.city?.name, v?.state?.stateCode].filter(Boolean).join(', ') || null;
+  const main = category(e);
   return {
     source: 'ticketmaster',
     source_id: e.id,
     status: e.dates?.status?.code === 'cancelled' ? 'rejected' : 'approved',
-    category: category(e),
+    category: main,
     title: e.name.trim().slice(0, 120),
     description: e.info ? e.info.trim().slice(0, 1000) : null,
     starts_at: startsAt,
@@ -107,6 +171,8 @@ export function mapTicketmaster(e: TmEvent): EventRow | null {
     longitude: num(v?.location?.longitude),
     url: e.url?.startsWith('http') ? e.url : null,
     image_url: image(e),
+    ...tmPrices(e),
+    extra_categories: familyExtra(main, tmIsFamily(e)),
   };
 }
 
@@ -124,6 +190,7 @@ export interface SgEvent {
   taxonomies?: { name?: string }[];
   description?: string;
   performers?: { image?: string | null }[];
+  stats?: { lowest_price?: number | null; highest_price?: number | null };
   venue?: {
     name?: string;
     address?: string;
@@ -150,11 +217,12 @@ export function mapSeatGeek(e: SgEvent): EventRow | null {
   const lon = typeof v?.location?.lon === 'number' ? v.location.lon : null;
   const address = [v?.address, v?.city, v?.state].filter(Boolean).join(', ') || null;
   const img = e.performers?.find((p) => p.image?.startsWith('https://'))?.image ?? null;
+  const main = sgCategory(e);
   return {
     source: 'seatgeek',
     source_id: String(e.id),
     status: 'approved',
-    category: sgCategory(e),
+    category: main,
     title: e.title.trim().slice(0, 120),
     description: e.description ? e.description.trim().slice(0, 1000) : null,
     starts_at: startsAt,
@@ -165,6 +233,8 @@ export function mapSeatGeek(e: SgEvent): EventRow | null {
     longitude: lon,
     url: e.url?.startsWith('http') ? e.url : null,
     image_url: img,
+    ...sgPrices(e),
+    extra_categories: familyExtra(main, sgIsFamily(e)),
   };
 }
 
