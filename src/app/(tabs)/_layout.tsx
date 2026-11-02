@@ -49,6 +49,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="events"
+        options={{
+          title: t('events.tab'),
+          headerTitle: t('events.tab'),
+          tabBarAccessibilityLabel: t('events.tabA11y'),
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" size={size} color={color as string} />,
+        }}
+      />
+      <Tabs.Screen
         name="about"
         options={{
           title: t('map.tab.more'),
