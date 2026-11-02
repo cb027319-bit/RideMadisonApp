@@ -26,6 +26,7 @@ import {
   arrivalDock, bearingAt, buildLine, buildManeuvers, instruction, nextManeuver, pointAt, project, reachedStop, shortDistance,
   voicePrompt, type Maneuver, type RouteLine,
 } from '@/lib/navigation';
+import { withBikeTime } from '@/lib/planner';
 import { usePrefs } from '@/lib/prefs';
 import { isDroppedPin, useRoute } from '@/lib/route';
 import { fetchRoute, formatDuration, type LatLon, type RouteResult } from '@/lib/routing';
@@ -73,7 +74,7 @@ export default function NavigateScreen() {
   const styles = useStyles();
   const { c } = useTheme();
   const { t } = useT();
-  const ACCENT = c.accent;
+  const ACCENT = c.route;
   const { trip } = useTrip();
   const { paths, stations } = useData();
   const { prefs } = usePrefs();
@@ -85,7 +86,7 @@ export default function NavigateScreen() {
   const build = (result: RouteResult, waypoints: NavPoint[]): NavRoute => {
     const line = buildLine(result.coords);
     const maneuvers = buildManeuvers(line, result, (p) => nameAt(paths, p));
-    return { line, maneuvers, waypoints, waypointAlong: alongOfWaypoints(line, waypoints), timeS: result.timeS };
+    return { line, maneuvers, waypoints, waypointAlong: alongOfWaypoints(line, waypoints), timeS: withBikeTime(result, prefs?.bike).timeS };
   };
 
   const [nav, setNav] = useState<NavRoute | null>(() => (trip ? build(trip.result, trip.points) : null));
@@ -700,7 +701,7 @@ const useStyles = makeStyles((c) => ({
   arrivedScroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   arrivedCard: { backgroundColor: c.surface, borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
   arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: c.text },
-  arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: c.accent },
+  arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: c.accentText },
   badgeWon: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.gold, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 4 },
   badgeWonText: { fontFamily: FONT.bold, fontSize: 15, color: c.onGold },
   arrivedSub: { fontSize: 14, color: c.textMuted, marginBottom: 8, textAlign: 'center' },

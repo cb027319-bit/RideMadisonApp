@@ -41,7 +41,7 @@ export default function RouteScreen() {
   const styles = useStyles();
   const { c } = useTheme();
   const { t } = useT();
-  const ROUTE_COLOR = c.accent; // the route line and stop pins
+  const ROUTE_COLOR = c.route; // the route line and stop pins
   const PRIMARY = c.primary; // main buttons
   const { paths, location, locationDenied, stations } = useData();
   const route = useRoute();
@@ -805,7 +805,7 @@ type Role = 'start' | 'stop' | 'end';
 
 function roleColor(role: Role, c: Palette) {
   // White text sits on these pins, so they stay mid-dark in both modes.
-  return role === 'start' ? '#16a34a' : role === 'end' ? '#dc2626' : c.accent;
+  return role === 'start' ? '#16a34a' : role === 'end' ? '#dc2626' : c.route;
 }
 
 function roleLabel(role: Role, overall: number) {

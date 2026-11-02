@@ -36,7 +36,7 @@ export default function TourScreen() {
   const styles = useStyles();
   const { c } = useTheme();
   const { t } = useT();
-  const ACCENT = c.accent;
+  const ACCENT = c.route;
   const UNPLAYED = c.dark ? UNPLAYED_DARK : UNPLAYED_LIGHT;
   const { trip } = useTrip();
   const { paths } = useData();

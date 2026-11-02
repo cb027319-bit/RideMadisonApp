@@ -317,7 +317,7 @@ export default function MapScreen() {
           <Polyline
             key={`paid:${i}`}
             coordinates={line.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))}
-            strokeColor={c.accent}
+            strokeColor={c.route}
             strokeWidth={3}
             lineDashPattern={[8, 6]}
             zIndex={4}
