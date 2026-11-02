@@ -61,8 +61,10 @@ export function parseParks(json: { elements?: El[] }): Park[] {
   for (const el of json.elements ?? []) {
     const name = el.tags?.name;
     if (!name || !/state (park|recreation area)/i.test(name)) continue;
-    const lat = el.lat ?? el.center?.lat;
-    const lon = el.lon ?? el.center?.lon;
+    // `out center bb` can return only the bounding box: fall back to its middle.
+    const b = el.bounds;
+    const lat = el.lat ?? el.center?.lat ?? (b ? (b.minlat + b.maxlat) / 2 : undefined);
+    const lon = el.lon ?? el.center?.lon ?? (b ? (b.minlon + b.maxlon) / 2 : undefined);
     if (lat == null || lon == null) continue;
     const park: Park = {
       id: `osm:${el.type}:${el.id}`,

@@ -51,3 +51,19 @@ test('hiking-only park paths look different from unpaved bike trails', () => {
   assert.equal(parkTrailStyle({ access: 'bike', surface: 'asphalt' }), LINE_STYLE.path_paved);
   assert.notDeepEqual(LINE_STYLE.hiking, LINE_STYLE.path_unpaved);
 });
+
+test('parseParks uses the middle of the bounding box when Overpass sends no center', () => {
+  const parks = parseParks({
+    elements: [
+      {
+        type: 'way',
+        id: 1,
+        bounds: { minlat: 43.0, minlon: -89.9, maxlat: 43.2, maxlon: -89.7 },
+        tags: { name: 'Blue Mound State Park' },
+      },
+    ],
+  } as never);
+  assert.equal(parks.length, 1);
+  assert.equal(parks[0].lat, 43.1);
+  assert.equal(parks[0].lon, -89.8);
+});
