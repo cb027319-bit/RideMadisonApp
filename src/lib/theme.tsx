@@ -31,9 +31,17 @@ export interface Palette {
   primary: string;
   /** Text/icon on top of `primary`. */
   onPrimary: string;
-  /** Signal Red for routes and the main Start button (same in both modes). */
+  /**
+   * Signal Red for filled buttons with white text (Start, Ride there, Send) and other red fills.
+   * Deep enough that `onAccent` (white) on it is at least 4.5:1 in both modes
+   * (light #D02A3C = 5.15:1, dark #D9293C = 4.85:1).
+   */
   accent: string;
   onAccent: string;
+  /** Signal Red for red text or icons on `bg`/`surface` (at least 4.5:1 on both in each mode). */
+  accentText: string;
+  /** Signal Red for map route lines and route pins: the brand red, unchanged. */
+  route: string;
   gold: string;
   onGold: string;
   danger: string;
@@ -57,8 +65,10 @@ export const LIGHT: Palette = {
   textFaint: COLORS.inactive,
   primary: BRAND.navy,
   onPrimary: '#FFFFFF',
-  accent: BRAND.red,
+  accent: '#D02A3C',
   onAccent: '#FFFFFF',
+  accentText: '#D02A3C',
+  route: BRAND.red,
   gold: BRAND.gold,
   onGold: BRAND.navy,
   danger: '#B91C1C',
@@ -80,8 +90,10 @@ export const DARK: Palette = {
   textFaint: '#9AA1B2',
   primary: BRAND.limestone,
   onPrimary: BRAND.navy,
-  accent: '#F0505C',
+  accent: '#D9293C',
   onAccent: '#FFFFFF',
+  accentText: '#F25F6A',
+  route: '#F0505C',
   gold: BRAND.gold,
   onGold: BRAND.navy,
   danger: '#F87171',

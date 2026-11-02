@@ -2,6 +2,34 @@
 // @ts-nocheck
 
 // supabase/functions/events-sync/map.ts
+var MAX_PRICE = 99999;
+function priceFields(values) {
+  const ok = values.filter((v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= MAX_PRICE);
+  if (!ok.length) return { price_min: null, price_max: null, is_free: null };
+  const round = (n) => Math.round(n * 100) / 100;
+  const min = round(Math.min(...ok));
+  const max = round(Math.max(...ok));
+  return { price_min: min, price_max: max, is_free: min === 0 && max === 0 ? true : null };
+}
+function tmPrices(e) {
+  const usd = (e.priceRanges ?? []).filter((r) => (r.currency ?? "").toUpperCase() === "USD");
+  return priceFields(usd.flatMap((r) => [r.min, r.max]));
+}
+function sgPrices(e) {
+  return priceFields([e.stats?.lowest_price, e.stats?.highest_price]);
+}
+var FAMILY = /\b(family|families|children|childrens|kids)\b/i;
+var familyExtra = (main, isFamily) => isFamily && main !== "family" ? ["family"] : [];
+function tmIsFamily(e) {
+  return (e.classifications ?? []).some(
+    (c) => c.family === true || [c.segment?.name, c.genre?.name, c.subGenre?.name].some((n) => !!n && FAMILY.test(n.replace(/'/g, "")))
+  );
+}
+function sgIsFamily(e) {
+  return [e.type, ...(e.taxonomies ?? []).map((x) => x.name)].some(
+    (n) => !!n && FAMILY.test(n.replace(/[_-]/g, " ").replace(/'/g, ""))
+  );
+}
 function chicagoOffsetMinutes(at) {
   const part = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", timeZoneName: "shortOffset" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value;
   const m = part?.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
@@ -45,11 +73,12 @@ function mapTicketmaster(e) {
   const endsAt = allDay ? new Date(new Date(startsAt).getTime() + 864e5).toISOString() : null;
   const v = e._embedded?.venues?.[0];
   const address = [v?.address?.line1, v?.city?.name, v?.state?.stateCode].filter(Boolean).join(", ") || null;
+  const main = category(e);
   return {
     source: "ticketmaster",
     source_id: e.id,
     status: e.dates?.status?.code === "cancelled" ? "rejected" : "approved",
-    category: category(e),
+    category: main,
     title: e.name.trim().slice(0, 120),
     description: e.info ? e.info.trim().slice(0, 1e3) : null,
     starts_at: startsAt,
@@ -59,7 +88,9 @@ function mapTicketmaster(e) {
     latitude: num(v?.location?.latitude),
     longitude: num(v?.location?.longitude),
     url: e.url?.startsWith("http") ? e.url : null,
-    image_url: image(e)
+    image_url: image(e),
+    ...tmPrices(e),
+    extra_categories: familyExtra(main, tmIsFamily(e))
   };
 }
 function sgCategory(e) {
@@ -78,11 +109,12 @@ function mapSeatGeek(e) {
   const lon = typeof v?.location?.lon === "number" ? v.location.lon : null;
   const address = [v?.address, v?.city, v?.state].filter(Boolean).join(", ") || null;
   const img = e.performers?.find((p) => p.image?.startsWith("https://"))?.image ?? null;
+  const main = sgCategory(e);
   return {
     source: "seatgeek",
     source_id: String(e.id),
     status: "approved",
-    category: sgCategory(e),
+    category: main,
     title: e.title.trim().slice(0, 120),
     description: e.description ? e.description.trim().slice(0, 1e3) : null,
     starts_at: startsAt,
@@ -92,7 +124,9 @@ function mapSeatGeek(e) {
     latitude: lat,
     longitude: lon,
     url: e.url?.startsWith("http") ? e.url : null,
-    image_url: img
+    image_url: img,
+    ...sgPrices(e),
+    extra_categories: familyExtra(main, sgIsFamily(e))
   };
 }
 var metersBetween = (a, b) => {
@@ -112,13 +146,71 @@ function isSameEvent(a, b) {
   return !!a.venue_name && norm(a.venue_name) === norm(b.venue_name);
 }
 
+// supabase/functions/events-sync/throttle.ts
+var SYNC_KEY = "events-sync";
+var SYNC_START_KEY = "events-sync:start";
+var MIN_GAP_MS = 20 * 6e4;
+var IN_PROGRESS_MS = 3 * 6e4;
+function tokenMatches(token, secret) {
+  if (!token || !secret || token.length !== secret.length) return false;
+  let diff = 0;
+  for (let i = 0; i < secret.length; i++) diff |= token.charCodeAt(i) ^ secret.charCodeAt(i);
+  return diff === 0;
+}
+var ms = (iso) => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+};
+function throttleDecision(i) {
+  if (tokenMatches(i.token, i.secret)) return { run: true, bypass: true };
+  const success = ms(i.lastSuccess);
+  const start = ms(i.lastStart);
+  let until = 0;
+  if (success != null) until = Math.max(until, Math.min(success, i.now) + MIN_GAP_MS);
+  if (start != null && (success == null || start > success)) {
+    until = Math.max(until, Math.min(start, i.now) + IN_PROGRESS_MS);
+  }
+  if (until > i.now) return { run: false, retryAfterSec: Math.ceil((until - i.now) / 1e3) };
+  return { run: true, bypass: false };
+}
+
 // supabase/functions/events-sync/index.ts
 var CENTER = "43.0731,-89.4012";
 var RADIUS_MILES = 25;
 var DAYS_AHEAD = 60;
 var PAGE_SIZE = 200;
 var MAX_PAGES = 5;
-var json = (body, status = 200) => new Response(JSON.stringify(body, null, 1), { status, headers: { "Content-Type": "application/json" } });
+var json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body, null, 1), { status, headers: { ...headers, "Content-Type": "application/json" } });
+async function readSyncState(supabaseUrl, auth) {
+  try {
+    const keys = [SYNC_KEY, SYNC_START_KEY].map((k) => `"${k}"`).join(",");
+    const res = await fetch(`${supabaseUrl}/rest/v1/sync_state?key=in.(${encodeURIComponent(keys)})&select=key,last_run`, {
+      headers: auth
+    });
+    if (!res.ok) {
+      console.error("events-sync: could not read sync_state", res.status, (await res.text()).slice(0, 160));
+      return {};
+    }
+    const rows = await res.json();
+    return Object.fromEntries(rows.map((r) => [r.key, r.last_run]));
+  } catch (e) {
+    console.error("events-sync: could not read sync_state", e);
+    return {};
+  }
+}
+async function markSyncState(supabaseUrl, auth, key) {
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/sync_state?on_conflict=key`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ key, last_run: (/* @__PURE__ */ new Date()).toISOString() })
+    });
+    if (!res.ok) console.error("events-sync: could not save sync_state", key, res.status, (await res.text()).slice(0, 160));
+  } catch (e) {
+    console.error("events-sync: could not save sync_state", key, e);
+  }
+}
 var tmDate = (d) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
 async function fetchTicketmaster(apiKey) {
   const now = /* @__PURE__ */ new Date();
@@ -172,8 +264,7 @@ async function fetchSeatGeek(clientId) {
   }
   return out;
 }
-async function sync(supabaseUrl, key, apiKey, seatGeekId) {
-  const auth = { apikey: key, Authorization: `Bearer ${key}` };
+async function sync(supabaseUrl, auth, apiKey, seatGeekId) {
   const raw = await fetchTicketmaster(apiKey);
   const rows = [];
   const seen = /* @__PURE__ */ new Set();
@@ -218,6 +309,7 @@ async function sync(supabaseUrl, key, apiKey, seatGeekId) {
     });
     if (!up.ok) throw new Error(`save ${up.status}: ${(await up.text()).slice(0, 200)}`);
   }
+  await markSyncState(supabaseUrl, auth, SYNC_KEY);
   return { fetched: raw.length, saved: rows.length, hidden: rows.filter((r) => r.status === "rejected").length, seatgeek };
 }
 Deno.serve(async (req) => {
@@ -226,7 +318,20 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("TICKETMASTER_API_KEY");
   if (!supabaseUrl || !key) return json({ error: "Server not configured" }, 500);
   if (!apiKey) return json({ error: "Add the TICKETMASTER_API_KEY secret first" }, 500);
-  const run = sync(supabaseUrl, key, apiKey, Deno.env.get("SEATGEEK_CLIENT_ID") || void 0);
+  const auth = { apikey: key, Authorization: `Bearer ${key}` };
+  const state = await readSyncState(supabaseUrl, auth);
+  const decision = throttleDecision({
+    lastSuccess: state[SYNC_KEY],
+    lastStart: state[SYNC_START_KEY],
+    now: Date.now(),
+    token: req.headers.get("x-sync-token"),
+    secret: Deno.env.get("SNAPSHOT_TOKEN")
+  });
+  if (!decision.run) {
+    return json({ error: "Ran recently" }, 429, { "Retry-After": String(decision.retryAfterSec) });
+  }
+  await markSyncState(supabaseUrl, auth, SYNC_START_KEY);
+  const run = sync(supabaseUrl, auth, apiKey, Deno.env.get("SEATGEEK_CLIENT_ID") || void 0);
   if (new URL(req.url).searchParams.get("wait") !== "1" && typeof EdgeRuntime !== "undefined") {
     EdgeRuntime.waitUntil(run.catch((e) => console.error("events-sync failed", e)));
     return json({ started: true }, 202);
