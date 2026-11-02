@@ -6,7 +6,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import * as Speech from 'expo-speech';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { AnimatedRegion, MarkerAnimated, Polyline } from 'react-native-maps';
@@ -29,6 +28,7 @@ import { isDroppedPin, useRoute } from '@/lib/route';
 import { fetchRoute, formatDuration, type LatLon, type RouteResult } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
+import { speak, stopSpeaking } from '@/lib/voice';
 import { makeStyles, useTheme } from '@/lib/theme';
 
 /** Animated marker typed loosely: react-native-maps' types omit children. */
@@ -148,8 +148,7 @@ export default function NavigateScreen() {
 
   const say = (text: string) => {
     if (mutedRef.current) return;
-    Speech.stop();
-    Speech.speak(text, { language: locale(), rate: 1.0 });
+    speak(text, locale());
   };
 
   /** New route from here. `approach`: the rider is away from the start, so ride to it first. */
@@ -296,13 +295,12 @@ export default function NavigateScreen() {
   }, [simulating]);
 
   // Stop talking when leaving.
-  useEffect(() => () => void Speech.stop(), []);
+  useEffect(() => () => stopSpeaking(), []);
 
   // Arrival announcement (the only place arrival is spoken).
   useEffect(() => {
     if (!arrived || mutedRef.current) return;
-    Speech.stop();
-    Speech.speak(t('route.voice.arrived'), { language: locale() });
+    speak(t('route.voice.arrived'), locale());
   }, [arrived]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save tapped while signed out: carry on once signed in.
@@ -405,7 +403,7 @@ export default function NavigateScreen() {
     mapRef.current?.animateCamera({ center: c, heading: bearingAt(nav.line, along, 25), pitch: 55, zoom: 17.5, altitude: 300 }, { duration: 600 });
   };
   const end = () => {
-    Speech.stop();
+    stopSpeaking();
     void logRide().then((earned) => {
       if (earned.length) Alert.alert(t('route.newBadge'), earned.map((b) => b.name).join(', '));
     });
@@ -515,7 +513,7 @@ export default function NavigateScreen() {
           <Pressable
             style={styles.ctl}
             onPress={() => {
-              if (!muted) Speech.stop();
+              if (!muted) stopSpeaking();
               setMuted(!muted);
             }}
             accessibilityRole="button"
