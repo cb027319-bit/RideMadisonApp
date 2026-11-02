@@ -20,23 +20,29 @@ interface PrefsState {
   skipped: boolean;
   setPrefs: (p: Prefs) => void;
   skipPrefs: () => void;
+  /** "Share anonymous usage stats" (More tab). On unless the rider turned it off. */
+  shareUsage: boolean;
+  setShareUsage: (on: boolean) => void;
 }
 
 const KEY = 'prefs:v1';
 const SKIP_KEY = 'prefsSkipped:v1';
+const USAGE_KEY = 'shareUsage:v1';
 const Ctx = createContext<PrefsState | null>(null);
 
 export function PrefsProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefsState] = useState<Prefs | null>(null);
   const [skipped, setSkipped] = useState(false);
+  const [shareUsage, setShareUsageState] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.multiGet([KEY, SKIP_KEY])
+    AsyncStorage.multiGet([KEY, SKIP_KEY, USAGE_KEY])
       .then((pairs) => {
         const raw = pairs[0]?.[1];
         if (raw) setPrefsState(JSON.parse(raw) as Prefs);
         if (pairs[1]?.[1]) setSkipped(true);
+        if (pairs[2]?.[1] === '0') setShareUsageState(false);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -52,7 +58,15 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(SKIP_KEY, '1').catch(() => {});
   }, []);
 
-  const value = useMemo(() => ({ prefs, loaded, skipped, setPrefs, skipPrefs }), [prefs, loaded, skipped, setPrefs, skipPrefs]);
+  const setShareUsage = useCallback((on: boolean) => {
+    setShareUsageState(on);
+    AsyncStorage.setItem(USAGE_KEY, on ? '1' : '0').catch(() => {});
+  }, []);
+
+  const value = useMemo(
+    () => ({ prefs, loaded, skipped, setPrefs, skipPrefs, shareUsage, setShareUsage }),
+    [prefs, loaded, skipped, setPrefs, skipPrefs, shareUsage, setShareUsage],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

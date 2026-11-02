@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { getLocales } from 'expo-localization';
 import { useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -29,6 +29,7 @@ const COLLECTED: Key[] = [
   'more.collectStyle',
   'more.collectTaps',
   'more.collectEvents',
+  'more.collectUsage',
 ];
 
 const GUIDES: { title: Key; body: Key; link?: { label: Key; url: string } }[] = [
@@ -63,7 +64,7 @@ function phoneLanguageName(): string {
 
 export default function AboutScreen() {
   const { refreshAll, paths, places, stations } = useData();
-  const { prefs, setPrefs } = usePrefs();
+  const { prefs, setPrefs, shareUsage, setShareUsage } = usePrefs();
   const auth = useAuth();
   const { logs } = useRideLog();
   const { t, pref: langPref, setPref: setLangPref } = useT();
@@ -185,6 +186,21 @@ export default function AboutScreen() {
       <Text style={styles.settingLabel}>{t('more.appearance')}</Text>
       <Segmented label={t('more.appearance')} value={themePref} options={themeOptions} onChange={setThemePref} />
       <Text style={styles.prefsHint}>{t('more.appearanceHint')}</Text>
+
+      <View style={styles.switchRow}>
+        <View style={{ flex: 1 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <Text style={styles.prefsText}>{t('more.shareUsage')}</Text>
+          <Text style={styles.prefsHint}>{t('more.shareUsageHint')}</Text>
+        </View>
+        <Switch
+          value={shareUsage}
+          onValueChange={setShareUsage}
+          trackColor={{ true: c.primary, false: c.border }}
+          thumbColor={Platform.OS === 'android' ? (shareUsage ? c.onPrimary : c.surfaceAlt) : undefined}
+          accessibilityLabel={t('more.shareUsage')}
+          accessibilityHint={t('more.shareUsageHint')}
+        />
+      </View>
 
       <Text style={styles.h2} accessibilityRole="header">{t('more.guides')}</Text>
       {GUIDES.map((g, i) => (
@@ -403,6 +419,7 @@ const useStyles = makeStyles((c) => ({
   },
   prefsText: { fontSize: 15, fontFamily: FONT.bold, color: c.text },
   prefsHint: { fontSize: 14, color: c.textMuted, marginTop: 2 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18, minHeight: 44 },
   settingLabel: { fontSize: 15, fontFamily: FONT.bold, color: c.text, marginTop: 18, marginBottom: 8 },
   segment: {
     flexDirection: 'row', borderWidth: 1, borderColor: c.border, borderRadius: 12, backgroundColor: c.surface, overflow: 'hidden',

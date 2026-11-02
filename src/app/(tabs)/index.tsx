@@ -13,6 +13,7 @@ import { MapKey } from '@/components/map-key';
 import { Onboarding } from '@/components/onboarding';
 import { PathLines } from '@/components/path-lines';
 import { BRAND, COLORS, FONT, INITIAL_REGION, MADISON_CENTER } from '@/lib/config';
+import { markRouteSource, track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { useData, type Selection } from '@/lib/data';
 import { pointInBBox, regionToBBox, type Region } from '@/lib/geo';
@@ -267,8 +268,9 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion({ ...location, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 500);
   }, [location]);
 
-  const toggle = (id: LayerId) => {
+  const toggle = (id: LayerId, from: 'chips' | 'layers_sheet' = 'chips') => {
     if ((id === 'food' || id === 'drink') && !layers[id]) loadFood();
+    track('layer_toggled', { layer: id, on: !layers[id], from });
     setLayers((l) => ({ ...l, [id]: !l[id] }));
   };
   const extraOn = LAYERS.filter((l) => !CHIP_IDS.includes(l.id) && layers[l.id]).length;
@@ -547,6 +549,7 @@ export default function MapScreen() {
             onRetryParkTrails={() => setParkRetry((n) => n + 1)}
             onClose={() => select(null)}
             onRouteHere={(label) => {
+              markRouteSource(selection.type === 'trail' ? 'trail_card' : 'map_card');
               routeTo(targetFor(selection), label);
               select(null);
               router.navigate('/route');
@@ -559,7 +562,7 @@ export default function MapScreen() {
         visible={layersOpen}
         layers={layerOptions}
         on={layers}
-        onToggle={toggle}
+        onToggle={(id) => toggle(id, 'layers_sheet')}
         onClose={() => setLayersOpen(false)}
         onShowKey={() => {
           setLayersOpen(false);
@@ -572,9 +575,13 @@ export default function MapScreen() {
         visible={launchDone && prefsLoaded && !prefs && !prefsSkipped && auth.ready && auth.welcomeHandled && !auth.sheet}
         onDone={(p) => {
           setPrefs(p);
+          track('onboarding_completed', { skipped: false, bike_type: p.bike, comfort: p.comfort, ebike_class: p.ebikeClass ?? null });
           if (auth.session) void auth.updateProfile({ bike_type: p.bike, comfort: p.comfort }).catch(() => {});
         }}
-        onSkip={skipPrefs}
+        onSkip={() => {
+          track('onboarding_completed', { skipped: true });
+          skipPrefs();
+        }}
       />
     </View>
   );
