@@ -4,25 +4,26 @@ import * as Sharing from 'expo-sharing';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Alert, Animated, FlatList, Keyboard, LayoutAnimation, Linking, Modal, PanResponder, Platform, Pressable,
-  ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  ScrollView, StyleSheet, Switch, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import MapView, { Marker, Polyline, type LongPressEvent, type MapPressEvent } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DirectionsSheet } from '@/components/directions-sheet';
 import { PathLines } from '@/components/path-lines';
 import { Snackbar, type SnackbarMessage } from '@/components/snackbar';
 import { SuggestedRidesSheet } from '@/components/suggested-rides';
 import { routePoints, type SuggestedRide } from '@/lib/suggested';
-import { COVERAGE_BBOX, FONT, INITIAL_REGION } from '@/lib/config';
+import { COLORS, COVERAGE_BBOX, FONT, INITIAL_REGION } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/data';
 import { formatDistance, type Region } from '@/lib/geo';
 import { locale, t as tr, useT } from '@/lib/i18n';
 import { DARK_MAP_STYLE } from '@/lib/map-style';
 import { buildLine, buildManeuvers } from '@/lib/navigation';
-import { movedText, shouldStartFromMe } from '@/lib/planner';
-import { isDroppedPin, useRoute, type SavedRide } from '@/lib/route';
+import { docksNear, movedText, shouldStartFromMe, withBikeTime } from '@/lib/planner';
+import { usePrefs, type BikeType } from '@/lib/prefs';
+import { isDroppedPin, useRoute, type SavedRide, type Stop } from '@/lib/route';
 import { nameAt } from '@/lib/trails';
 import { makeStyles, useTheme, type Palette } from '@/lib/theme';
 import { useTrip } from '@/lib/trip';
@@ -32,14 +33,24 @@ import {
   type RouteProfile,
 } from '@/lib/routing';
 
+let snackSeq = 0;
+/** A fresh id for each snackbar message (so repeats show again). */
+const nextSnackId = () => ++snackSeq;
+
 export default function RouteScreen() {
   const styles = useStyles();
   const { c } = useTheme();
   const { t } = useT();
   const ROUTE_COLOR = c.accent; // the route line and stop pins
   const PRIMARY = c.primary; // main buttons
-  const { paths, location, locationDenied } = useData();
+  const { paths, location, locationDenied, stations } = useData();
   const route = useRoute();
+  const { prefs } = usePrefs();
+  const bike = prefs?.bike;
+  const { fontScale, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  /** Larger accessibility text sizes: stack side-by-side controls. */
+  const bigText = fontScale >= 1.3;
   const auth = useAuth();
   const { setTrip } = useTrip();
   const mapRef = useRef<MapView>(null);
@@ -59,6 +70,12 @@ export default function RouteScreen() {
   const [showDirections, setShowDirections] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelHeight, setPanelHeight] = useState(0);
+  const [screenHeight, setScreenHeight] = useState(0);
+  /** The panel's state before a search collapsed it (restored when the search ends). */
+  const [panelBeforeSearch, setPanelBeforeSearch] = useState<boolean | null>(null);
+  // The panel never covers more than ~80% of the space below the status bar, so the
+  // grab handle and search box stay on screen at any text size.
+  const panelMax = Math.round(((screenHeight || windowHeight) - insets.top) * 0.8);
 
   // Panel drag: the panel follows the finger, then springs open or closed on release.
   const [dragY] = useState(() => new Animated.Value(0));
@@ -100,7 +117,31 @@ export default function RouteScreen() {
   });
   const [snack, setSnack] = useState<SnackbarMessage | null>(null);
   const toast = (text: string, actionLabel?: string, onAction?: () => void) =>
-    setSnack({ id: Date.now(), text, actionLabel, onAction });
+    setSnack({ id: nextSnackId(), text, actionLabel, onAction });
+
+  /** Searching: collapse the panel so the results show; remember how it was. */
+  const beginSearch = () => {
+    if (panelBeforeSearch != null) return;
+    setPanelBeforeSearch(panelOpen);
+    if (panelOpen) setPanel(false);
+  };
+  /** Search done: put the panel back (or open it when something was just added). */
+  const endSearch = (open?: boolean) => {
+    const next = open ?? panelBeforeSearch;
+    setPanelBeforeSearch(null);
+    if (next != null && next !== panelOpen) setPanel(next);
+  };
+
+  // "Ride there" replaced a plan in progress: offer Undo.
+  const replacedId = route.replaced?.id;
+  useEffect(() => {
+    if (!replacedId || Date.now() - replacedId > 10_000) return;
+    const timer = setTimeout(() => {
+      setPanelOpen(true);
+      setSnack({ id: replacedId, text: tr('route.replaced'), actionLabel: tr('route.undo'), onAction: route.undoReplace });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [replacedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced place search.
   useEffect(() => {
@@ -135,7 +176,7 @@ export default function RouteScreen() {
     const coords = route.result?.coords;
     if (!coords || coords.length < 2) return;
     mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: { top: 140, right: 50, bottom: 420, left: 50 },
+      edgePadding: { top: 140, right: 50, bottom: Math.min(panelHeight || 420, panelMax) + 24, left: 50 },
       animated: true,
     });
   }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -171,19 +212,20 @@ export default function RouteScreen() {
     if ((e.nativeEvent as { action?: string }).action === 'marker-press') return;
     Keyboard.dismiss();
     if (results.length) setResults([]);
+    if (panelBeforeSearch != null) endSearch();
   };
 
   const onMapLongPress = (e: LongPressEvent) => {
     Keyboard.dismiss();
     setResults([]);
     const id = route.addStop(e.nativeEvent.coordinate);
-    setPanelOpen(true);
+    endSearch(true);
     toast(t('route.stopAdded'), t('route.undo'), () => route.removeStop(id));
   };
 
   const pickResult = (r: PlaceResult) => {
     const p = { latitude: r.latitude, longitude: r.longitude };
-    if (searchMode === 'start') {
+    if (mode === 'start') {
       route.setStart(p, r.title);
       setSearchMode('stop');
       AccessibilityInfo.announceForAccessibility(t('route.startingFromName', { name: r.title }));
@@ -194,7 +236,7 @@ export default function RouteScreen() {
     setQuery('');
     setResults([]);
     Keyboard.dismiss();
-    setPanelOpen(true);
+    endSearch(true);
     mapRef.current?.animateToRegion({ ...p, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 400);
   };
 
@@ -203,17 +245,18 @@ export default function RouteScreen() {
     searchRef.current?.focus();
   };
 
-  // Rows shown in the stops list, including "My location" when used.
-  const total = route.stops.length + (route.usingMyLocation ? 1 : 0);
-  /** With no start chosen yet, a lone point is the destination. */
-  const needsStart = !route.usingMyLocation && route.stops.length === 1;
+  /** No start chosen yet (the "Starting from?" row stands in for it). */
+  const needsStart = route.needsStart;
+  // Rows shown in the stops list, including "My location" (or the missing start) first.
+  const offset = route.usingMyLocation || needsStart ? 1 : 0;
+  const total = route.stops.length + offset;
   const roleOf = (overallIndex: number): Role => {
-    if (needsStart) return 'end';
     if (overallIndex === 0) return 'start';
     if (overallIndex === total - 1 && !route.roundTrip) return 'end';
     return 'stop';
   };
-  const offset = route.usingMyLocation ? 1 : 0;
+  /** A picked search result sets the start while one is missing. */
+  const mode = needsStart ? 'start' : searchMode;
   const title = route.planName ?? rideName(route.stops.map((s) => s.label));
 
   const shareGpx = async () => {
@@ -229,7 +272,7 @@ export default function RouteScreen() {
     }
   };
 
-  const hasRoute = route.status === 'ready' && route.result;
+  const hasRoute = route.status === 'ready' && route.result && !needsStart;
 
   /** Hand the planned route to the Navigate or Tour screen. */
   const openTrip = (screen: '/navigate' | '/tour') => {
@@ -248,7 +291,7 @@ export default function RouteScreen() {
     route.loadRide(r);
     const points = r.stops.map(({ latitude, longitude, label }) => ({ latitude, longitude, label }));
     if (r.roundTrip && points.length >= 2) points.push({ ...points[0], label: t('route.backTo', { name: points[0].label }) });
-    setTrip({ title: r.name, result: r.result, points, profile: r.profile });
+    setTrip({ title: r.name, result: withBikeTime(r.result, bike), points, profile: r.profile });
     setShowSaved(false);
     setTimeout(() => router.push('/navigate'), 350); // let the sheet close first
   };
@@ -269,6 +312,12 @@ export default function RouteScreen() {
     ]);
   };
 
+  /** Remove a stop, with Undo in the snackbar. */
+  const removeStop = (s: Stop, index: number) => {
+    route.removeStop(s.id);
+    toast(t('route.removedName', { name: s.label }), t('route.undo'), () => route.restoreStop(s, index));
+  };
+
   const shift = (id: string, label: string, delta: -1 | 1) => {
     const i = route.stops.findIndex((s) => s.id === id);
     const j = Math.max(0, Math.min(route.stops.length - 1, i + delta));
@@ -287,8 +336,13 @@ export default function RouteScreen() {
   const summaryText = summaryParts.join('  ·  ');
   const summaryA11y = summaryParts.join(', ').replace(' mi,', ` ${t('route.milesWord')},`);
 
+  // BCycle docks near where the ride ends (for BCycle riders, or when one is close by).
+  const lastStop = route.stops[route.stops.length - 1];
+  const destination = route.roundTrip ? (route.usingMyLocation ? null : route.stops[0] ?? null) : lastStop ?? null;
+  const docks = docksNear(stations, destination, bike === 'bcycle');
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={(e) => setScreenHeight(e.nativeEvent.layout.height)}>
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -327,81 +381,41 @@ export default function RouteScreen() {
             </Marker>
           );
         })}
+        {docks.map((d) => (
+          <Marker
+            key={`dock:${d.id}:${d.docks}`}
+            coordinate={{ latitude: d.lat, longitude: d.lon }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={8}
+            tracksViewChanges={false}
+            accessibilityLabel={t('route.dockA11y', { name: d.name, docks: t('route.openDocks', { count: d.docks }) })}>
+            <View style={styles.dockPin}>
+              <Ionicons name="bicycle" size={13} color="#FFFFFF" />
+              <Text style={styles.dockPinText}>{d.docks}</Text>
+            </View>
+          </Marker>
+        ))}
       </MapView>
-
-      {/* Search */}
-      <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={c.textMuted} />
-          <TextInput
-            ref={searchRef}
-            value={query}
-            onChangeText={setQuery}
-            onBlur={() => {
-              if (!query) setSearchMode('stop');
-            }}
-            placeholder={
-              searchMode === 'start'
-                ? t('route.search.placeholderStart')
-                : route.stops.length
-                  ? t('route.search.placeholderStop')
-                  : t('route.search.placeholderWhereTo')
-            }
-            placeholderTextColor={c.textMuted}
-            style={styles.searchInput}
-            returnKeyType="search"
-            autoCorrect={false}
-            accessibilityLabel={searchMode === 'start' ? t('route.search.a11yStart') : t('route.search.a11y')}
-          />
-          {searching ? (
-            <ActivityIndicator size="small" color={c.primary} />
-          ) : query ? (
-            <Pressable onPress={() => setQuery('')} hitSlop={13} accessibilityRole="button" accessibilityLabel={t('route.search.clear')}>
-              <Ionicons name="close-circle" size={18} color={c.textMuted} />
-            </Pressable>
-          ) : null}
-        </View>
-        {(results.length > 0 || (searchError && query.trim().length >= 3)) && (
-          <View style={styles.results}>
-            {results.length ? (
-              <FlatList
-                data={results}
-                keyboardShouldPersistTaps="handled"
-                keyExtractor={(r) => r.id}
-                ItemSeparatorComponent={() => <View style={styles.sep} />}
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() => pickResult(item)}
-                    accessibilityRole="button"
-                    accessibilityHint={searchMode === 'start' ? t('route.search.hintStart') : t('route.search.hintStop')}
-                    style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}>
-                    <Ionicons name="location-outline" size={18} color={c.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.resultTitle} numberOfLines={1}>{item.title}</Text>
-                      {item.subtitle ? <Text style={styles.resultSub} numberOfLines={1}>{item.subtitle}</Text> : null}
-                    </View>
-                  </Pressable>
-                )}
-              />
-            ) : (
-              <Text style={styles.resultEmpty}>{searchError}</Text>
-            )}
-          </View>
-        )}
-      </SafeAreaView>
 
       {/* Planner panel */}
       <Animated.View
-        style={[styles.panel, { transform: [{ translateY: dragY }] }]}
+        style={[styles.panel, { maxHeight: panelMax, transform: [{ translateY: dragY }] }]}
         onLayout={(e) => setPanelHeight(e.nativeEvent.layout.height)}>
-        {/* Drag zone: the handle and the summary below it. */}
-        <View {...panelPan.panHandlers}>
+        {/* Drag zone: the handle and the summary below it. Always on screen. */}
+        <View {...panelPan.panHandlers} style={styles.dragZone}>
         <Pressable
           onPress={() => setPanel(!panelOpen)}
           style={styles.handleArea}
           hitSlop={{ top: 12, bottom: 4 }}
           accessibilityRole="button"
-          accessibilityLabel={panelOpen ? t('route.panelCollapse') : t('route.panelExpand')}>
+          accessibilityLabel={t('route.panel')}
+          accessibilityHint={panelOpen ? t('route.panelCollapse') : t('route.panelExpand')}
+          accessibilityState={{ expanded: panelOpen }}
+          accessibilityActions={[{ name: panelOpen ? 'close' : 'open', label: panelOpen ? t('route.panelClose') : t('route.panelOpen') }]}
+          onAccessibilityAction={(e) => {
+            if (e.nativeEvent.actionName === 'open') setPanel(true);
+            else if (e.nativeEvent.actionName === 'close') setPanel(false);
+          }}>
           <View style={styles.handle} />
           {!panelOpen && route.stops.length > 0 && <Ionicons name="chevron-up" size={16} color={c.textFaint} style={styles.handleChevron} />}
         </Pressable>
@@ -439,9 +453,10 @@ export default function RouteScreen() {
         </View>
         </View>
 
+        <ScrollView style={styles.panelScroll} keyboardShouldPersistTaps="handled">
         {route.stops.length > 0 && panelOpen && (
           <View style={styles.styleBox}>
-            <View style={styles.segment} accessibilityRole="radiogroup" accessibilityLabel={t('route.style')}>
+            <View style={[styles.segment, bigText && styles.segmentStacked]} accessibilityRole="radiogroup" accessibilityLabel={t('route.style')}>
               {(Object.keys(PROFILE_META) as RouteProfile[]).map((p) => {
                 const on = route.profile === p;
                 const yours = on && route.profileFromPrefs;
@@ -453,7 +468,7 @@ export default function RouteScreen() {
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={`${PROFILE_META[p].label}${yours ? `, ${t('route.yourPick')}` : ''}`}
                     accessibilityHint={PROFILE_META[p].hint}
-                    style={[styles.segmentItem, on && styles.segmentActive]}>
+                    style={[styles.segmentItem, bigText && styles.segmentItemStacked, on && styles.segmentActive]}>
                     <Text style={[styles.segmentText, on && styles.segmentTextActive]}>{PROFILE_META[p].label}</Text>
                     <Text style={[styles.segmentHint, on && styles.segmentHintActive]}>
                       {PROFILE_META[p].hint}{yours ? ` (${t('route.yourPick')})` : ''}
@@ -467,9 +482,9 @@ export default function RouteScreen() {
         )}
 
         {hasRoute && (
-          <View style={styles.startRow}>
+          <View style={[styles.startRow, bigText && styles.startRowStacked]}>
             <Pressable
-              style={({ pressed }) => [styles.startBtn, pressed && { transform: [{ scale: 0.98 }], opacity: 0.92 }]}
+              style={({ pressed }) => [styles.startBtn, bigText && styles.startBtnStacked, pressed && { transform: [{ scale: 0.98 }], opacity: 0.92 }]}
               onPress={() => openTrip('/navigate')}
               accessibilityRole="button"
               accessibilityLabel={t('route.startRide')}
@@ -501,7 +516,7 @@ export default function RouteScreen() {
         )}
 
         {panelOpen && (
-          <ScrollView style={{ maxHeight: 300 }} keyboardShouldPersistTaps="handled">
+          <View>
             {/* Stops */}
             {route.usingMyLocation && (
               <StopRow color={roleColor('start', c)} badge={t('route.startBadge')} title={t('route.myLocation')} subtitle={t('route.start')} />
@@ -525,10 +540,10 @@ export default function RouteScreen() {
                   badge={role === 'start' ? t('route.startBadge') : role === 'end' ? undefined : String(overall)}
                   flag={role === 'end'}
                   title={s.label}
-                  subtitle={needsStart ? t('route.destination') : roleLabel(role, overall)}
+                  subtitle={needsStart && role === 'end' ? t('route.destination') : roleLabel(role, overall)}
                   onUp={i > 0 ? () => shift(s.id, s.label, -1) : undefined}
                   onDown={i < route.stops.length - 1 ? () => shift(s.id, s.label, 1) : undefined}
-                  onRemove={() => route.removeStop(s.id)}
+                  onRemove={() => removeStop(s, i)}
                 />
               );
             })}
@@ -592,9 +607,73 @@ export default function RouteScreen() {
             {hasRoute && (
               <Text style={styles.footnote}>{t('route.footnote')}</Text>
             )}
-          </ScrollView>
+          </View>
         )}
+        </ScrollView>
       </Animated.View>
+
+      {/* Search (drawn above the panel so its results are never covered) */}
+      <SafeAreaView edges={['top']} style={styles.top} pointerEvents="box-none">
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={c.textMuted} />
+          <TextInput
+            ref={searchRef}
+            value={query}
+            onChangeText={setQuery}
+            onFocus={beginSearch}
+            onBlur={() => {
+              if (!query) setSearchMode('stop');
+              if (!results.length) endSearch();
+            }}
+            placeholder={
+              mode === 'start'
+                ? t('route.search.placeholderStart')
+                : route.stops.length
+                  ? t('route.search.placeholderStop')
+                  : t('route.search.placeholderWhereTo')
+            }
+            placeholderTextColor={c.textMuted}
+            style={styles.searchInput}
+            returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel={mode === 'start' ? t('route.search.a11yStart') : t('route.search.a11y')}
+          />
+          {searching ? (
+            <ActivityIndicator size="small" color={c.primary} />
+          ) : query ? (
+            <Pressable onPress={() => setQuery('')} hitSlop={13} accessibilityRole="button" accessibilityLabel={t('route.search.clear')}>
+              <Ionicons name="close-circle" size={18} color={c.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+        {(results.length > 0 || (searchError && query.trim().length >= 3)) && (
+          <View style={[styles.results, { maxHeight: Math.max(320, Math.min(4 * 64 * fontScale, windowHeight * 0.6)) }]}>
+            {results.length ? (
+              <FlatList
+                data={results}
+                keyboardShouldPersistTaps="handled"
+                keyExtractor={(r) => r.id}
+                ItemSeparatorComponent={() => <View style={styles.sep} />}
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => pickResult(item)}
+                    accessibilityRole="button"
+                    accessibilityHint={mode === 'start' ? t('route.search.hintStart') : t('route.search.hintStop')}
+                    style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}>
+                    <Ionicons name="location-outline" size={18} color={c.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.resultTitle} numberOfLines={1}>{item.title}</Text>
+                      {item.subtitle ? <Text style={styles.resultSub} numberOfLines={1}>{item.subtitle}</Text> : null}
+                    </View>
+                  </Pressable>
+                )}
+              />
+            ) : (
+              <Text style={styles.resultEmpty}>{searchError}</Text>
+            )}
+          </View>
+        )}
+      </SafeAreaView>
 
       <Snackbar message={snack} onDismiss={() => setSnack(null)} bottom={panelHeight + 12} />
 
@@ -625,7 +704,7 @@ export default function RouteScreen() {
         onClose={() => setShowIdeas(false)}
         onPreview={(ride, result) => {
           const pts = routePoints(ride).map((pt, i) => ({ ...pt, label: labelFor(ride, i) }));
-          setTrip({ title: ride.name, result, points: pts, profile: ride.profile, rideId: ride.id });
+          setTrip({ title: ride.name, result: withBikeTime(result, bike), points: pts, profile: ride.profile, rideId: ride.id });
           setShowIdeas(false);
           setTimeout(() => router.push('/tour'), 350); // let the sheet close first
         }}
@@ -646,6 +725,7 @@ export default function RouteScreen() {
       />
       <SavedRidesModal
         visible={showSaved}
+        bike={bike}
         rides={route.savedRides}
         error={route.savedError}
         onRetry={route.reloadSaved}
@@ -763,7 +843,12 @@ function StopRow(props: {
       </View>
       {props.onUp && <IconBtn icon="arrow-up" label={t('route.moveEarlier', { name: props.title })} onPress={props.onUp} />}
       {props.onDown && <IconBtn icon="arrow-down" label={t('route.moveLater', { name: props.title })} onPress={props.onDown} />}
-      {props.onRemove && <IconBtn icon="close" label={t('route.remove', { name: props.title })} onPress={props.onRemove} />}
+      {props.onRemove && (
+        // Kept clear of the arrows so a shaky tap on "down" doesn't remove the stop.
+        <View style={(props.onUp || props.onDown) && styles.removeGap}>
+          <IconBtn icon="close" label={t('route.remove', { name: props.title })} onPress={props.onRemove} />
+        </View>
+      )}
     </View>
   );
 }
@@ -846,8 +931,8 @@ function SaveModal({ visible, defaultName, startsAtMe, hideStart, onHideStart, s
   );
 }
 
-function SavedRidesModal({ visible, rides, error, onRetry, signedOut, onClose, onOpen, onStart, onDelete }: {
-  visible: boolean; rides: SavedRide[]; error: string | null; onRetry: () => void; signedOut: boolean; onClose: () => void;
+function SavedRidesModal({ visible, bike, rides, error, onRetry, signedOut, onClose, onOpen, onStart, onDelete }: {
+  visible: boolean; bike: BikeType | undefined; rides: SavedRide[]; error: string | null; onRetry: () => void; signedOut: boolean; onClose: () => void;
   onOpen: (r: SavedRide) => void; onStart: (r: SavedRide) => void; onDelete: (r: SavedRide) => void;
 }) {
   const styles = useStyles();
@@ -884,7 +969,7 @@ function SavedRidesModal({ visible, rides, error, onRetry, signedOut, onClose, o
           }
           renderItem={({ item }) => {
             const date = new Date(item.createdAt).toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' });
-            const sub = `${formatDistance(item.result.distanceM)} · ${t('route.climb', { n: metersToFeet(item.result.climbM) })} · ${formatDuration(item.result.timeS)}`;
+            const sub = `${formatDistance(item.result.distanceM)} · ${t('route.climb', { n: metersToFeet(item.result.climbM) })} · ${formatDuration(withBikeTime(item.result, bike).timeS)}`;
             const meta = t(item.roundTrip ? 'route.savedMetaRound' : 'route.savedMeta', { profile: PROFILE_META[item.profile].label, date });
             return (
               <View style={styles.savedRow}>
@@ -929,10 +1014,10 @@ const useStyles = makeStyles((c) => ({
   top: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 12 },
   searchBox: {
     marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.surface,
-    borderRadius: 14, paddingHorizontal: 14, height: 48, ...shadow,
+    borderRadius: 14, paddingHorizontal: 14, minHeight: 48, paddingVertical: 4, ...shadow,
   },
-  searchInput: { flex: 1, fontSize: 16, color: c.text },
-  results: { marginTop: 6, backgroundColor: c.surface, borderRadius: 14, maxHeight: 320, overflow: 'hidden', ...shadow },
+  searchInput: { flex: 1, fontSize: 16, color: c.text, paddingVertical: 8 },
+  results: { marginTop: 6, backgroundColor: c.surface, borderRadius: 14, overflow: 'hidden', ...shadow },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   resultTitle: { fontSize: 16, fontFamily: FONT.bold, color: c.text },
   resultSub: { fontSize: 14, color: c.textMuted, marginTop: 2 },
@@ -943,23 +1028,27 @@ const useStyles = makeStyles((c) => ({
     position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: c.surface,
     borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingHorizontal: 16, paddingBottom: 12, ...shadow,
   },
-  handleArea: { alignSelf: 'stretch', minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  dragZone: { flexShrink: 0 },
+  panelScroll: { flexGrow: 0, flexShrink: 1 },
+  handleArea: { alignSelf: 'stretch', minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: c.textFaint },
   handleChevron: { marginTop: -2, marginBottom: -6 },
   summaryArea: { alignItems: 'center', gap: 8, paddingBottom: 10 },
   summary: { fontSize: 19, fontFamily: FONT.black, color: c.text, textAlign: 'center' },
   startRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  startRowStacked: { flexDirection: 'column', alignItems: 'stretch' },
   startBtn: {
-    flex: 1, height: 58, borderRadius: 16, backgroundColor: c.accent, flexDirection: 'row', alignItems: 'center',
+    flex: 1, minHeight: 58, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, backgroundColor: c.accent, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 10,
     shadowColor: c.accent, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
   },
-  startText: { color: c.onAccent, fontSize: 20, fontFamily: FONT.black, letterSpacing: 0.3 },
+  startBtnStacked: { flex: 0 },
+  startText: { flexShrink: 1, color: c.onAccent, fontSize: 20, fontFamily: FONT.black, letterSpacing: 0.3, textAlign: 'center' },
   previewBtn: {
-    height: 58, paddingHorizontal: 16, borderRadius: 16, borderWidth: 2, borderColor: c.primary, flexDirection: 'row',
+    minHeight: 58, paddingVertical: 8, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 16, borderWidth: 2, borderColor: c.primary, flexDirection: 'row',
     alignItems: 'center', gap: 6, backgroundColor: c.surface,
   },
-  previewText: { color: c.primary, fontSize: 16, fontFamily: FONT.black },
+  previewText: { flexShrink: 1, color: c.primary, fontSize: 16, fontFamily: FONT.black },
   ideas: {
     flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.primary, borderRadius: 14,
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
@@ -983,6 +1072,12 @@ const useStyles = makeStyles((c) => ({
   stopTitle: { fontSize: 15, fontWeight: '600', color: c.text },
   stopSub: { fontSize: 13, color: c.textMuted },
   iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  removeGap: { marginLeft: 12 },
+  dockPin: {
+    flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 28, minHeight: 28, borderRadius: 14, paddingHorizontal: 6,
+    backgroundColor: c.dark ? '#3B5BA9' : COLORS.bcycle, borderWidth: 2, borderColor: '#FFFFFF',
+  },
+  dockPinText: { color: '#FFFFFF', fontWeight: '800', fontSize: 12 },
   stopPin: {
     minWidth: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: c.dark ? c.bg : '#FFFFFF', paddingHorizontal: 4, flexDirection: 'row',
@@ -991,6 +1086,8 @@ const useStyles = makeStyles((c) => ({
   styleBox: { marginBottom: 10 },
   segment: { flexDirection: 'row', backgroundColor: c.surfaceAlt, borderRadius: 10, padding: 3 },
   segmentItem: { flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center', minHeight: 44 },
+  segmentStacked: { flexDirection: 'column' },
+  segmentItemStacked: { flex: 0, alignItems: 'flex-start', paddingHorizontal: 10 },
   segmentActive: { backgroundColor: c.dark ? c.pressed : c.surface, elevation: 1, shadowColor: c.shadow, shadowOpacity: 0.08, shadowRadius: 2 },
   segmentText: { fontSize: 14, fontWeight: '600', color: c.textMuted },
   segmentTextActive: { color: c.primary, fontFamily: FONT.black },

@@ -10,7 +10,7 @@ import { useData } from './data';
 import { profileFor, usePrefs } from './prefs';
 import { simplify, type LonLat } from './geo';
 import { t, translate } from './i18n';
-import { insertIndex, planKey, thinResult, trimStart } from './planner';
+import { insertIndex, planKey, savedStartsAtMe, thinResult, trimEnds, withBikeTime } from './planner';
 import { supabase } from './supabase';
 import { fetchRoute, reverseLabel, type LatLon, type RouteProfile, type RouteResult } from './routing';
 
@@ -30,6 +30,8 @@ export interface SavedRide {
   result: RouteResult;
   /** Identifies the plan it was saved from (to avoid saving it twice). */
   planKey?: string;
+  /** Saved from my location with "Hide my start" on: `stops` has no start; reopen from my location. */
+  startHidden?: boolean;
 }
 
 export interface PlanInput {
@@ -67,8 +69,15 @@ interface RouteState {
   planName: string | null;
   /** True while the route style is the one picked during onboarding. */
   profileFromPrefs: boolean;
-  /** Hide the first ~200 m when saving or sharing a ride that starts at my location. */
+  /** Hide the first ~200 m (and the last ~200 m of loops) when saving or sharing a ride that starts at my location. */
   hideStart: boolean;
+  /** The plan has no start yet: ask "Starting from?" and don't offer Start. */
+  needsStart: boolean;
+  /** Set when "Ride there" replaced a plan; `undoReplace` brings it back. */
+  replaced: { id: number } | null;
+  undoReplace: () => void;
+  /** Puts a removed stop back where it was (Undo). */
+  restoreStop: (stop: Stop, index: number) => void;
   setHideStart: (v: boolean) => void;
   /** Bumped whenever a stop is added from outside the Route tab. */
   focusRequest: number;
@@ -96,6 +105,18 @@ interface RouteState {
   /** The current plan's start (for GPX), with "hide my start" applied. */
   shareable: () => { result: RouteResult; points: (LatLon & { label: string })[] } | null;
   deleteRide: (id: string) => Promise<void>;
+}
+
+/** Everything "Undo" needs to bring back a replaced plan. */
+interface Snapshot {
+  stops: Stop[];
+  startFromMe: boolean;
+  profileChoice: RouteProfile | null;
+  roundTrip: boolean;
+  pinned: { key: string; result: RouteResult } | null;
+  loadedFrom: { id: string | null; name: string; key: string } | null;
+  pendingMe: boolean;
+  fallback: { key: string; result: RouteResult } | null;
 }
 
 const Ctx = createContext<RouteState | null>(null);
@@ -151,6 +172,12 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   const [pinned, setPinned] = useState<{ key: string; result: RouteResult } | null>(null);
   /** The saved or suggested ride the plan came from. */
   const [loadedFrom, setLoadedFrom] = useState<{ id: string | null; name: string; key: string } | null>(null);
+  /** A saved ride whose start was hidden: it starts from my location once we have it. */
+  const [pendingMe, setPendingMe] = useState(false);
+  /** The stored line of such a ride, used if re-routing from my location fails (offline). */
+  const [fallback, setFallback] = useState<{ key: string; result: RouteResult } | null>(null);
+  /** The plan "Ride there" replaced, for Undo. */
+  const [replaced, setReplaced] = useState<{ id: number; snapshot: Snapshot } | null>(null);
 
   // Saved rides: in your account when accounts are on, otherwise on this phone.
   useEffect(() => {
@@ -201,6 +228,9 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   }, [accounts, userId, savedReload]);
 
   const usingMyLocation = startFromMe && location != null;
+  /** A reopened ride with a hidden start and no location yet: wait for a start. */
+  const awaitingStart = pendingMe && !usingMyLocation && stops.length > 0;
+  const needsStart = awaitingStart || (!usingMyLocation && stops.length === 1);
 
   // First need for location: a ride that starts "from my location" has a stop.
   const needsLocation = startFromMe && stops.length > 0 && locationStatus === 'unknown';
@@ -210,15 +240,17 @@ export function RouteProvider({ children }: { children: ReactNode }) {
 
   const waypoints = useMemo<LatLon[]>(() => {
     const pts: LatLon[] = [];
+    if (awaitingStart) return pts;
     if (usingMyLocation && location) pts.push(location);
     for (const s of stops) pts.push({ latitude: s.latitude, longitude: s.longitude });
     if (roundTrip && pts.length >= 2) pts.push(pts[0]);
     return pts;
-  }, [usingMyLocation, location, stops, roundTrip]);
+  }, [awaitingStart, usingMyLocation, location, stops, roundTrip]);
 
   // Location updates every ~50 m; only re-route when the start moves ~150 m.
   const routerKey = useMemo(() => `${waypointKey(waypoints, usingMyLocation)}:${profile}`, [waypoints, profile, usingMyLocation]);
   const key = `${routerKey}:${retryCount}`;
+  const currentStopsKey = stopsKey(stops, profile, roundTrip);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -244,6 +276,13 @@ export function RouteProvider({ children }: { children: ReactNode }) {
         setStatus('ready');
       } catch (e) {
         if (controller.signal.aborted) return;
+        if (fallback && fallback.key === currentStopsKey) {
+          // Offline: use the ride's stored line (the rider is guided to its start).
+          setResult(fallback.result);
+          setStatus('ready');
+          setError(null);
+          return;
+        }
         setStatus('error');
         setError(e instanceof Error ? e.message : t('route.err.routingFailed'));
       }
@@ -260,8 +299,18 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /** A plan built from nothing goes back to the rider's own style and start. */
+  const freshPlan = useCallback(() => {
+    setProfile(null);
+    setPinned(null);
+    setLoadedFrom(null);
+    setPendingMe(false);
+    setFallback(null);
+  }, []);
+
   const addStop = useCallback(
     (p: LatLon, label?: string) => {
+      if (stops.length === 0) freshPlan();
       const id = newId();
       const stop = { id, latitude: p.latitude, longitude: p.longitude, label: label ?? t('route.droppedPin') };
       setStops((ss) => {
@@ -271,20 +320,60 @@ export function RouteProvider({ children }: { children: ReactNode }) {
       if (!label) labelLater(id, p);
       return id;
     },
-    [labelLater, roundTrip],
+    [labelLater, roundTrip, stops.length, freshPlan],
   );
 
-  const setStart = useCallback((p: LatLon, label: string) => {
-    setStartFromMe(false);
-    setStops((ss) => [{ id: newId(), latitude: p.latitude, longitude: p.longitude, label }, ...ss]);
-  }, []);
+  const setStart = useCallback(
+    (p: LatLon, label: string) => {
+      if (stops.length === 0) freshPlan();
+      setPendingMe(false);
+      setStartFromMe(false);
+      setStops((ss) => [{ id: newId(), latitude: p.latitude, longitude: p.longitude, label }, ...ss]);
+    },
+    [stops.length, freshPlan],
+  );
 
-  /** From the Map tab: plan a fresh route from the rider to this place. */
-  const routeTo = useCallback((p: LatLon, label: string) => {
-    setStops([{ id: newId(), latitude: p.latitude, longitude: p.longitude, label }]);
-    setStartFromMe(true);
-    setRoundTrip(false);
+  /**
+   * From the Map or Events tab: plan a fresh route from the rider to this
+   * place, in the rider's own style. A plan already in progress is kept for Undo.
+   */
+  const routeTo = useCallback(
+    (p: LatLon, label: string) => {
+      const same = stops.length === 1 && startFromMe && !roundTrip && planKey(stops, 'quiet') === planKey([p], 'quiet');
+      setReplaced(
+        stops.length > 0 && !same
+          ? {
+            id: Date.now(),
+            snapshot: { stops, startFromMe, profileChoice, roundTrip, pinned, loadedFrom, pendingMe, fallback },
+          }
+          : null,
+      );
+      freshPlan();
+      setStops([{ id: newId(), latitude: p.latitude, longitude: p.longitude, label }]);
+      setStartFromMe(true);
+      setRoundTrip(false);
+      setFocusRequest((n) => n + 1);
+    },
+    [stops, startFromMe, profileChoice, roundTrip, pinned, loadedFrom, pendingMe, fallback, freshPlan],
+  );
+
+  const undoReplace = useCallback(() => {
+    if (!replaced) return;
+    const s = replaced.snapshot;
+    setStops(s.stops);
+    setStartFromMe(s.startFromMe);
+    setProfile(s.profileChoice);
+    setRoundTrip(s.roundTrip);
+    setPinned(s.pinned);
+    setLoadedFrom(s.loadedFrom);
+    setPendingMe(s.pendingMe);
+    setFallback(s.fallback);
+    setReplaced(null);
     setFocusRequest((n) => n + 1);
+  }, [replaced]);
+
+  const restoreStop = useCallback((stop: Stop, index: number) => {
+    setStops((ss) => (ss.some((s) => s.id === stop.id) ? ss : [...ss.slice(0, index), stop, ...ss.slice(index)]));
   }, []);
 
   const moveStop = useCallback(
@@ -312,9 +401,9 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     setStops([]);
     setRoundTrip(false);
     setStartFromMe(true);
-    setPinned(null);
-    setLoadedFrom(null);
-  }, []);
+    freshPlan();
+    setReplaced(null);
+  }, [freshPlan]);
 
   const persist = useCallback(async (rides: SavedRide[]) => {
     setSavedRides(rides);
@@ -325,17 +414,17 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const currentStopsKey = stopsKey(stops, profile, roundTrip);
-  const currentPlanKey = planKey(waypoints, profile);
+  const hidingStart = usingMyLocation && hideStart;
+  const currentPlanKey = planKey(waypoints, profile, hidingStart);
   const fromLoaded = loadedFrom && loadedFrom.key === currentStopsKey ? loadedFrom : null;
   const savedId = fromLoaded?.id ?? savedRides.find((r) => r.planKey === currentPlanKey)?.id ?? null;
   const planName = fromLoaded?.name ?? null;
 
-  /** The current route with "hide my start" applied when it begins at my location. */
+  /** The current route with "hide my start" applied when it begins at my location (both ends of a loop). */
   const privateResult = useCallback((): RouteResult | null => {
     if (!result) return null;
-    return usingMyLocation && hideStart ? trimStart(result) : result;
-  }, [result, usingMyLocation, hideStart]);
+    return hidingStart ? trimEnds(result) : result;
+  }, [result, hidingStart]);
 
   const shareable = useCallback(() => {
     const r = privateResult();
@@ -366,6 +455,7 @@ export function RouteProvider({ children }: { children: ReactNode }) {
         stops: allStops,
         result: lighten(r),
         planKey: currentPlanKey,
+        ...(hidingStart ? { startHidden: true } : {}),
       };
       if (accounts && supabase && userId) {
         const { id: _localId, name: rideName, createdAt: _c, ...rest } = ride;
@@ -384,23 +474,37 @@ export function RouteProvider({ children }: { children: ReactNode }) {
       setLoadedFrom({ id: ride.id, name: ride.name, key: currentStopsKey });
       return ride;
     },
-    [privateResult, savedId, savedRides, usingMyLocation, location, hideStart, stops, profile, roundTrip, currentPlanKey,
+    [privateResult, savedId, savedRides, usingMyLocation, location, hideStart, hidingStart, stops, profile, roundTrip, currentPlanKey,
       currentStopsKey, persist, accounts, userId],
   );
 
   const loadRide = useCallback((ride: SavedRide) => {
     const loaded = ride.stops.map((st) => ({ ...st, id: newId() }));
-    const pts: LatLon[] = loaded.map(({ latitude, longitude }) => ({ latitude, longitude }));
-    if (ride.roundTrip && pts.length >= 2) pts.push(pts[0]);
-    setStartFromMe(false);
+    const loadedKey = stopsKey(loaded, ride.profile, ride.roundTrip);
+    // The ride's style applies to this ride only (clear/routeTo/new plans go back to the rider's).
     setProfile(ride.profile);
     setRoundTrip(ride.roundTrip);
     setStops(loaded);
-    setResult(ride.result);
-    setStatus('ready');
-    setError(null);
-    setPinned({ key: `${waypointKey(pts, false)}:${ride.profile}`, result: ride.result });
-    setLoadedFrom({ id: ride.id, name: ride.name, key: stopsKey(loaded, ride.profile, ride.roundTrip) });
+    setReplaced(null);
+    if (savedStartsAtMe(ride)) {
+      // Saved with "Hide my start": start from where the rider is now. Until we
+      // know that, the planner asks for a start and offers no Start button.
+      setStartFromMe(true);
+      setPendingMe(true);
+      setPinned(null);
+      setFallback({ key: loadedKey, result: ride.result });
+    } else {
+      const pts: LatLon[] = loaded.map(({ latitude, longitude }) => ({ latitude, longitude }));
+      if (ride.roundTrip && pts.length >= 2) pts.push(pts[0]);
+      setStartFromMe(false);
+      setPendingMe(false);
+      setFallback(null);
+      setResult(ride.result);
+      setStatus('ready');
+      setError(null);
+      setPinned({ key: `${waypointKey(pts, false)}:${ride.profile}`, result: ride.result });
+    }
+    setLoadedFrom({ id: ride.id, name: ride.name, key: loadedKey });
     setFocusRequest((n) => n + 1);
   }, []);
 
@@ -408,6 +512,9 @@ export function RouteProvider({ children }: { children: ReactNode }) {
     const loaded = plan.stops.map((st) => ({ ...st, id: newId() }));
     const fromMe = !!plan.fromMe;
     setStartFromMe(fromMe);
+    setPendingMe(false);
+    setFallback(null);
+    setReplaced(null);
     setProfile(plan.profile);
     setRoundTrip(plan.roundTrip);
     setStops(loaded);
@@ -447,15 +554,20 @@ export function RouteProvider({ children }: { children: ReactNode }) {
   const reloadSaved = useCallback(() => setSavedReload((n) => n + 1), []);
   const requestSearch = useCallback(() => setSearchRequest((n) => n + 1), []);
 
+  // Times shown and handed to Navigate/Preview follow the rider's bike (e-bikes ~15 mph).
+  const bike = prefs?.bike;
+  const shownResult = useMemo(() => (result ? withBikeTime(result, bike) : null), [result, bike]);
+  const replacedInfo = useMemo(() => (replaced ? { id: replaced.id } : null), [replaced]);
+
   const value = useMemo<RouteState>(
     () => ({
-      stops, startFromMe, usingMyLocation, profile, roundTrip, result, status, error, waypoints, savedRides, savedError, reloadSaved,
-      savedId, planName, profileFromPrefs, hideStart, setHideStart,
+      stops, startFromMe, usingMyLocation, profile, roundTrip, result: shownResult, status, error, waypoints, savedRides, savedError,
+      reloadSaved, savedId, planName, profileFromPrefs, hideStart, setHideStart, needsStart, replaced: replacedInfo, undoReplace, restoreStop,
       focusRequest, searchRequest, requestSearch, addStop, setStart, routeTo, moveStop, removeStop, shiftStop, setStartFromMe, setProfile,
       setRoundTrip, clear, retry, saveRide, loadRide, loadPlan, shareable, deleteRide,
     }),
-    [stops, startFromMe, usingMyLocation, profile, roundTrip, result, status, error, waypoints, savedRides, savedError, reloadSaved,
-      savedId, planName, profileFromPrefs, hideStart,
+    [stops, startFromMe, usingMyLocation, profile, roundTrip, shownResult, status, error, waypoints, savedRides, savedError, reloadSaved,
+      savedId, planName, profileFromPrefs, hideStart, needsStart, replacedInfo, undoReplace, restoreStop,
       focusRequest, searchRequest, requestSearch, addStop, setStart, routeTo, moveStop, removeStop, shiftStop, clear, retry, saveRide,
       loadRide, loadPlan, shareable, deleteRide],
   );

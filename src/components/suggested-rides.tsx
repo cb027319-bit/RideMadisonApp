@@ -10,7 +10,8 @@ import { cached } from '@/lib/cache';
 import { COVERAGE_BBOX, FONT, MADISON_CENTER } from '@/lib/config';
 import { formatDistance, pointInBBox, simplify, type LonLat } from '@/lib/geo';
 import { useT } from '@/lib/i18n';
-import { thinResult } from '@/lib/planner';
+import { thinResult, withBikeTime } from '@/lib/planner';
+import { usePrefs } from '@/lib/prefs';
 import { fetchRoute, formatDuration, metersToFeet, type LatLon, type RouteResult } from '@/lib/routing';
 import {
   closestMiles, filterRides, FROM_ME_FILTERS, LENGTH_FILTERS, rideTypeLabel, rideTypeOf, routePoints,
@@ -187,6 +188,7 @@ function RideCard({ m, failed, inArea, onPress, onPreview }: {
   const { c } = useTheme();
   const { t } = useT();
   const mix = mixColors(c);
+  const { prefs } = usePrefs();
   const r = m.result;
   const b = r?.breakdown;
   const kind = rideTypeOf(b) ?? m.ride.expectedType;
@@ -216,7 +218,7 @@ function RideCard({ m, failed, inArea, onPress, onPreview }: {
 
         {r ? (
           <Text style={styles.stats}>
-            {formatDistance(r.distanceM)}  ·  {formatDuration(r.timeS)}  ·  {t('route.climb', { n: metersToFeet(r.climbM) })}
+            {formatDistance(r.distanceM)}  ·  {formatDuration(withBikeTime(r, prefs?.bike).timeS)}  ·  {t('route.climb', { n: metersToFeet(r.climbM) })}
             {b ? `  ·  ${t('route.carFree', { pct: Math.round(b.path * 100) })}  ·  ${t('route.paved', { pct: Math.round((1 - b.unpaved) * 100) })}` : ''}
           </Text>
         ) : (
