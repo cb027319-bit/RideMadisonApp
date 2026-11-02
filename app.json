@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ride Madison",
     "slug": "ride-madison",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ridemadison",
@@ -12,7 +12,11 @@
       "bundleIdentifier": "com.ridemadison.app",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "location",
+          "audio"
+        ]
       }
     },
     "android": {
@@ -45,7 +49,12 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Ride Madison uses your location to show nearby paths, BCycle and shops, plan routes from where you are, and give turn-by-turn directions."
+          "locationWhenInUsePermission": "Ride Madison uses your location to show nearby paths, BCycle and shops, plan routes from where you are, and give turn-by-turn directions.",
+          "locationAlwaysAndWhenInUsePermission": "Ride Madison uses your location to show nearby paths, BCycle and shops, plan routes from where you are, and keep giving turn-by-turn directions when your phone is locked.",
+          "locationAlwaysPermission": "Ride Madison uses your location to keep giving turn-by-turn directions when your phone is locked.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-sharing",

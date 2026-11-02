@@ -6,6 +6,9 @@
 //
 // iOS speech uses the app's audio session, so we set the session to "play, ducking others" and only
 // keep it active while speaking: an active ducking session would keep the music quiet all ride.
+//
+// While navigating, the session is also allowed to play in the background (UIBackgroundModes
+// "audio"), so prompts still speak with the screen locked or another app in front.
 
 import { setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import * as Speech from 'expo-speech';
@@ -14,6 +17,8 @@ import * as Speech from 'expo-speech';
 const RELEASE_DELAY_MS = 400;
 
 let modeReady: Promise<void> | null = null;
+/** True while turn-by-turn navigation is on: prompts may play with the app in the background. */
+let background = false;
 /** Increments on every speak/stop so callbacks from an older, interrupted prompt are ignored. */
 let current = 0;
 let releaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -23,7 +28,7 @@ function ensureMode(): Promise<void> {
     playsInSilentMode: true,
     interruptionMode: 'duckOthers',
     allowsRecording: false,
-    shouldPlayInBackground: false,
+    shouldPlayInBackground: background,
   }).catch((e) => {
     modeReady = null; // try again next prompt
     throw e;
@@ -59,6 +64,19 @@ export function speak(text: string, language: string): void {
     const done = () => release(id);
     Speech.speak(text, { language, rate: 1.0, onDone: done, onStopped: done, onError: done });
   })();
+}
+
+/**
+ * Turn background speech on when navigation starts and off when it ends. Turning it off also
+ * stops any prompt and gives the music its volume back.
+ */
+export function setSpeakInBackground(on: boolean): void {
+  if (background === on) return;
+  if (!on) stopSpeaking();
+  background = on;
+  modeReady = null;
+  // Apply now, so the first prompt after locking the phone doesn't have to set the session up.
+  void ensureMode().catch(() => {});
 }
 
 /** Stop speaking and give the music its volume back right away. */

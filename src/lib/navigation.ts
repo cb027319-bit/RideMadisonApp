@@ -339,3 +339,63 @@ export function voicePrompt(m: Maneuver, metersToTurn: number, spoken: Set<strin
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Background navigation helpers (used by bg-location.ts and the Navigate screen).
+
+/** 'background': updates keep coming with the phone locked; 'foreground': only while the app is on screen. */
+export type NavUpdateMode = 'background' | 'foreground';
+
+/**
+ * Whether to try background location updates at all. Web has none, and Expo Go can't run the
+ * background task, so those go straight to foreground-only updates. Everything else is tried and
+ * falls back if the phone refuses (missing build config, location services off, ...).
+ */
+export function canTryBackgroundUpdates(env: { os: string; expoGo: boolean; taskManagerAvailable: boolean }): boolean {
+  return (env.os === 'ios' || env.os === 'android') && !env.expoGo && env.taskManagerAvailable;
+}
+
+/**
+ * Fixes to hand to the screen, oldest first, skipping any not newer than the last one delivered
+ * (background updates can arrive in batches, and a batch can repeat a fix).
+ */
+export function freshFixes<T extends { timestamp: number }>(fixes: readonly T[], lastTimestamp: number): T[] {
+  return fixes.filter((f) => f.timestamp > lastTimestamp).sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/** A BCycle station as far as docking is concerned (BCycleStation fits). */
+export interface DockStation {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  docks: number;
+  returning: boolean;
+}
+
+/** Show a dock when the destination is this close to one, for any rider. */
+export const DOCK_NEAR_M = 400;
+/** BCycle riders need somewhere to return the bike, so look a bit farther for them. */
+export const DOCK_BCYCLE_M = 1600;
+/** Closer than this, the rider is already at the dock. */
+export const DOCK_HERE_M = 40;
+
+/**
+ * The BCycle dock to suggest on arrival: the nearest station that takes returns and has an open
+ * spot, within 400 m of the destination (1600 m for BCycle riders). `here` means the destination
+ * is the dock itself, so there's nowhere to ride to.
+ */
+export function arrivalDock<S extends DockStation>(
+  stations: readonly S[],
+  dest: LatLon,
+  bcycleRider: boolean,
+): { station: S; distanceM: number; here: boolean } | null {
+  const maxM = bcycleRider ? DOCK_BCYCLE_M : DOCK_NEAR_M;
+  let best: { station: S; distanceM: number } | null = null;
+  for (const s of stations) {
+    if (!s.returning || s.docks <= 0) continue;
+    const d = distanceMeters(dest.latitude, dest.longitude, s.lat, s.lon);
+    if (d <= maxM && (!best || d < best.distanceM)) best = { station: s, distanceM: d };
+  }
+  return best ? { ...best, here: best.distanceM < DOCK_HERE_M } : null;
+}

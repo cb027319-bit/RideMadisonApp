@@ -1,18 +1,20 @@
 // In-app turn-by-turn navigation: a bike icon follows your route on a
 // tilted, heading-up map, with big turn banners, spoken directions,
-// automatic rerouting, and an arrival summary.
+// automatic rerouting, and an arrival summary. Directions keep going with the
+// phone locked or another app in front (see src/lib/bg-location.ts).
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { AnimatedRegion, MarkerAnimated, Polyline } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BikeMarker, ManeuverIcon } from '@/components/maneuver-icon';
 import { useAuth } from '@/lib/auth';
+import { startNavigationUpdates, stopNavigationUpdates } from '@/lib/bg-location';
 import { useRideLog } from '@/lib/ridelog';
 import { addFix, MIN_LOG_M, newRecorder, type Badge } from '@/lib/stats';
 import { BRAND, FONT } from '@/lib/config';
@@ -21,14 +23,15 @@ import { distanceMeters, formatDistance } from '@/lib/geo';
 import { locale, useT } from '@/lib/i18n';
 import { DARK_MAP_STYLE } from '@/lib/map-style';
 import {
-  bearingAt, buildLine, buildManeuvers, instruction, nextManeuver, pointAt, project, reachedStop, shortDistance, voicePrompt,
-  type Maneuver, type RouteLine,
+  arrivalDock, bearingAt, buildLine, buildManeuvers, instruction, nextManeuver, pointAt, project, reachedStop, shortDistance,
+  voicePrompt, type Maneuver, type RouteLine,
 } from '@/lib/navigation';
+import { usePrefs } from '@/lib/prefs';
 import { isDroppedPin, useRoute } from '@/lib/route';
 import { fetchRoute, formatDuration, type LatLon, type RouteResult } from '@/lib/routing';
 import { nameAt } from '@/lib/trails';
 import { useTrip } from '@/lib/trip';
-import { speak, stopSpeaking } from '@/lib/voice';
+import { setSpeakInBackground, speak, stopSpeaking } from '@/lib/voice';
 import { makeStyles, useTheme } from '@/lib/theme';
 
 /** Animated marker typed loosely: react-native-maps' types omit children. */
@@ -72,7 +75,8 @@ export default function NavigateScreen() {
   const { t } = useT();
   const ACCENT = c.accent;
   const { trip } = useTrip();
-  const { paths } = useData();
+  const { paths, stations } = useData();
+  const { prefs } = usePrefs();
   const route = useRoute();
   const auth = useAuth();
   const rideLog = useRideLog();
@@ -98,6 +102,8 @@ export default function NavigateScreen() {
   const [arrived, setArrived] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  /** Background updates couldn't start: directions pause while the app is off screen. */
+  const [foregroundOnly, setForegroundOnly] = useState(false);
   const [startedAt] = useState(() => Date.now());
   // Clock for ETA and ride time (updated every few seconds).
   const [now, setNow] = useState(() => Date.now());
@@ -251,33 +257,36 @@ export default function NavigateScreen() {
     onFixRef.current = onFix;
   });
 
-  // Real GPS.
+  // Real GPS, also with the phone locked or another app in front. Only "While Using" permission
+  // is asked for: iOS keeps updates started on screen going in the background (blue pill).
   useEffect(() => {
-    if (simulating) return;
-    let sub: Location.LocationSubscription | null = null;
+    if (simulating || arrived) return;
     let cancelled = false;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled) return;
       if (status !== 'granted') {
-        if (!cancelled) setPermissionDenied(true);
+        setPermissionDenied(true);
         return;
       }
-      sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 3, timeInterval: 1000 },
-        (loc) =>
-          onFixRef.current(
-            { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-            loc.coords.speed,
-            loc.coords.heading,
-          ),
+      const mode = await startNavigationUpdates((loc) =>
+        onFixRef.current(
+          { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+          loc.coords.speed,
+          loc.coords.heading,
+        ),
       );
-      if (cancelled) sub.remove();
-    })().catch(() => setPermissionDenied(true));
+      if (cancelled) return;
+      setForegroundOnly(mode === 'foreground');
+      if (mode === 'foreground') AccessibilityInfo.announceForAccessibility(t('nav.keepOpen'));
+    })().catch(() => {
+      if (!cancelled) setPermissionDenied(true);
+    });
     return () => {
       cancelled = true;
-      sub?.remove();
+      void stopNavigationUpdates();
     };
-  }, [simulating]);
+  }, [simulating, arrived]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Simulated ride (testing at home): rides the route at ~15 mph.
   useEffect(() => {
@@ -294,8 +303,14 @@ export default function NavigateScreen() {
     return () => clearInterval(timer);
   }, [simulating]);
 
-  // Stop talking when leaving.
-  useEffect(() => () => stopSpeaking(), []);
+  // Prompts may speak in the background while navigating; stop talking and un-duck when leaving.
+  useEffect(() => {
+    setSpeakInBackground(true);
+    return () => {
+      stopSpeaking();
+      setSpeakInBackground(false);
+    };
+  }, []);
 
   // Arrival announcement (the only place arrival is spoken).
   useEffect(() => {
@@ -404,10 +419,29 @@ export default function NavigateScreen() {
   };
   const end = () => {
     stopSpeaking();
+    setSpeakInBackground(false);
+    void stopNavigationUpdates();
     void logRide().then((earned) => {
       if (earned.length) Alert.alert(t('route.newBadge'), earned.map((b) => b.name).join(', '));
     });
     router.back();
+  };
+  // Arrival: the BCycle dock to return a bike to, for BCycle riders or when one is close by.
+  const dest = nav.waypoints[nav.waypoints.length - 1] ?? nav.line.coords[nav.line.coords.length - 1];
+  const dock = arrived && dest ? arrivalDock(stations, dest, prefs?.bike === 'bcycle') : null;
+  const dockText = dock
+    ? dock.here
+      ? t('nav.dockHere', { name: dock.station.name, count: dock.station.docks })
+      : t('nav.dock', { name: dock.station.name, dist: formatDistance(dock.distanceM), count: dock.station.docks })
+    : '';
+  const rideToDock = () => {
+    if (!dock) return;
+    stopSpeaking();
+    setSpeakInBackground(false);
+    void stopNavigationUpdates();
+    void logRide();
+    route.routeTo({ latitude: dock.station.lat, longitude: dock.station.lon }, dock.station.name);
+    router.dismissTo('/route');
   };
   const confirmEnd = () => {
     Alert.alert(t('route.endTitle'), t('route.endMsg'), [
@@ -499,6 +533,12 @@ export default function NavigateScreen() {
             <Text style={styles.recenterText}>{t('route.recenter')}</Text>
           </Pressable>
         )}
+        {foregroundOnly && !simulating && !arrived && (
+          <View style={styles.note}>
+            <Ionicons name="phone-portrait-outline" size={16} color={c.textMuted} />
+            <Text style={styles.noteText}>{t('nav.keepOpen')}</Text>
+          </View>
+        )}
         <View style={styles.bottom}>
           <Pressable style={styles.ctl} onPress={confirmEnd} accessibilityLabel={t('route.endRide')} accessibilityRole="button">
             <View style={styles.endBtn}>
@@ -538,7 +578,7 @@ export default function NavigateScreen() {
       </SafeAreaView>
 
       {arrived && (
-        <View style={styles.arrivedWrap}>
+        <ScrollView style={styles.arrivedWrap} contentContainerStyle={styles.arrivedScroll}>
           <View style={styles.arrivedCard}>
             <Ionicons name="trophy" size={44} color={c.gold} />
             <Text style={styles.arrivedTitle}>{t('route.madeIt')}</Text>
@@ -558,6 +598,24 @@ export default function NavigateScreen() {
               </View>
             )}
             <Text style={styles.arrivedSub}>{trip.title}</Text>
+            {dock && (
+              <View style={styles.dock}>
+                <View style={styles.dockRow} accessible accessibilityLabel={dockText}>
+                  <Ionicons name="bicycle" size={22} color={c.text} />
+                  <Text style={styles.dockText}>{dockText}</Text>
+                </View>
+                {!dock.here && (
+                  <Pressable
+                    style={styles.dockBtn}
+                    onPress={rideToDock}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('nav.dockGoA11y', { name: dock.station.name })}>
+                    <Ionicons name="navigate" size={18} color={c.primary} />
+                    <Text style={styles.dockBtnText}>{t('nav.dockGo')}</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
             {route.savedId ? (
               <View style={[styles.primary, styles.savedPill]} accessible accessibilityLabel={t('route.inSavedA11y')}>
                 <Ionicons name="bookmark" size={18} color={c.text} />
@@ -583,7 +641,7 @@ export default function NavigateScreen() {
               <Text style={styles.done}>{t('common.done')}</Text>
             </Pressable>
           </View>
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -631,15 +689,29 @@ const useStyles = makeStyles((c) => ({
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, marginBottom: 10, ...shadow,
   },
   recenterText: { color: c.primary, fontFamily: FONT.bold, fontSize: 15 },
+  note: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', backgroundColor: c.surface, borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8, ...shadow,
+  },
+  noteText: { flexShrink: 1, fontSize: 13, fontFamily: FONT.bold, color: c.textMuted },
   simBtn: { alignSelf: 'center', backgroundColor: 'rgba(17,24,39,0.75)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, marginBottom: 4 },
   simText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
-  arrivedWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.scrim, justifyContent: 'center', padding: 24 },
+  arrivedWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.scrim },
+  arrivedScroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   arrivedCard: { backgroundColor: c.surface, borderRadius: 24, padding: 24, alignItems: 'center', gap: 8 },
   arrivedTitle: { fontSize: 30, fontFamily: FONT.black, color: c.text },
   arrivedStats: { fontSize: 18, fontFamily: FONT.bold, color: c.accent },
   badgeWon: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.gold, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 4 },
   badgeWonText: { fontFamily: FONT.bold, fontSize: 15, color: c.onGold },
   arrivedSub: { fontSize: 14, color: c.textMuted, marginBottom: 8, textAlign: 'center' },
+  dock: { alignSelf: 'stretch', backgroundColor: c.surfaceAlt, borderRadius: 14, padding: 12, gap: 8, marginBottom: 4 },
+  dockRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dockText: { flex: 1, fontSize: 15, fontFamily: FONT.bold, color: c.text },
+  dockBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, borderRadius: 12,
+    borderWidth: 1.5, borderColor: c.primary, paddingHorizontal: 14,
+  },
+  dockBtnText: { fontSize: 16, fontFamily: FONT.black, color: c.primary },
   primary: { alignSelf: 'stretch', backgroundColor: c.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center', minHeight: 48 },
   savedPill: { flexDirection: 'row', justifyContent: 'center', gap: 8, backgroundColor: c.surfaceAlt },
   doneBtn: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center' },

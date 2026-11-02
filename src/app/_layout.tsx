@@ -10,6 +10,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 
+// Defines the background navigation location task at startup (must run at module scope).
+import "@/lib/bg-location";
 import { AuthSheet } from "@/components/auth-sheet";
 import { LaunchDoneContext, LaunchScreen } from "@/components/launch-screen";
 import { AuthProvider } from "@/lib/auth";
