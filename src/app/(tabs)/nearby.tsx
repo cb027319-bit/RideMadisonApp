@@ -21,8 +21,8 @@ type Tab = 'bcycle' | 'trails' | 'shop' | 'repair' | 'food' | 'drink';
 
 /** `label` is an i18n key (BCycle is a brand name and stays as-is). */
 const TABS: { id: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'bcycle', label: 'BCycle', icon: 'bicycle' },
   { id: 'trails', label: 'map.layer.trails', icon: 'trail-sign' },
+  { id: 'bcycle', label: 'BCycle', icon: 'bicycle' },
   { id: 'shop', label: 'map.tabs.shops', icon: 'storefront' },
   { id: 'repair', label: 'map.tabs.fixit', icon: 'construct' },
   { id: 'food', label: 'map.place.food', icon: 'restaurant' },
@@ -48,7 +48,7 @@ export default function NearbyScreen() {
     stations, places, partners, trails, pathById, foodState, foodError, loadFood, location, stationsUpdatedAt,
     refreshAll, focus,
   } = useData();
-  const [tab, setTab] = useState<Tab>('bcycle');
+  const [tab, setTab] = useState<Tab>('trails');
   const [refreshing, setRefreshing] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
   const { origin, fromMe, outside } = distanceOrigin(location);
