@@ -39,6 +39,8 @@ export const more: Dict<typeof en> = {
   'more.appearanceLight': 'Clara',
   'more.appearanceDark': 'Oscura',
   'more.appearanceHint': 'Automática sigue el modo claro u oscuro de tu teléfono',
+  'more.shareUsage': 'Compartir estadísticas de uso anónimas',
+  'more.shareUsageHint': 'Nos muestra qué funciones usan los ciclistas y nos permite informar totales a los negocios locales que mantienen Ride Madison gratis. Nunca incluye tu ubicación, rutas, búsquedas, nombre ni correo.',
   'more.guides': 'Guías para ciclistas',
   'more.guidePassTitle': '¿Necesito un pase para senderos?',
   'more.guidePassBody': 'Los senderos estatales de Wisconsin, como Military Ridge, Badger y Glacial Drumlin, requieren un pase estatal para andar en bici si tienes 16 años o más: $5 por día o $25 por año. En el Capital City State Trail, el pase solo aplica a las 9 millas entre Verona Rd y Nob Hill Rd. Los senderos de la ciudad, como el Southwest Commuter Path, son gratis. Para caminar nunca necesitas pase. Toca cualquier sendero en el mapa para ver sus reglas.',

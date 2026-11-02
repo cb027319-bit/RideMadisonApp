@@ -15,6 +15,7 @@ import { Snackbar, type SnackbarMessage } from '@/components/snackbar';
 import { SuggestedRidesSheet } from '@/components/suggested-rides';
 import { routePoints, type SuggestedRide } from '@/lib/suggested';
 import { COLORS, COVERAGE_BBOX, FONT, INITIAL_REGION } from '@/lib/config';
+import { markRouteSource, roundMiles, track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { useData } from '@/lib/data';
 import { formatDistance, type Region } from '@/lib/geo';
@@ -60,6 +61,8 @@ export default function RouteScreen() {
   const [results, setResults] = useState<PlaceResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  /** Last query counted as a search (analytics). */
+  const lastSearch = useRef('');
   /** What a picked search result becomes: a stop/destination, or the ride's start. */
   const [searchMode, setSearchMode] = useState<'stop' | 'start'>('stop');
   const [showSaved, setShowSaved] = useState(false);
@@ -157,6 +160,12 @@ export default function RouteScreen() {
       try {
         const r = await searchPlaces(q, location, controller.signal);
         setResults(r);
+        // Length and result count only: the search text is never sent. Once per query
+        // (location updates re-run this search).
+        if (lastSearch.current !== q) {
+          lastSearch.current = q;
+          track('search_performed', { query_length: q.length, result_count: r.length, mode: route.needsStart ? 'start' : searchMode });
+        }
         setSearchError(r.length ? null : tr('route.search.noMatches'));
       } catch {
         if (!controller.signal.aborted) setSearchError(tr('route.search.unavailable'));
@@ -168,7 +177,7 @@ export default function RouteScreen() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, location]);
+  }, [query, location]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fit the map to the route when it changes or a saved ride is loaded.
   const fitKey = `${route.result?.coords.length ?? 0}:${route.result?.distanceM ?? 0}`;
@@ -218,6 +227,7 @@ export default function RouteScreen() {
   const onMapLongPress = (e: LongPressEvent) => {
     Keyboard.dismiss();
     setResults([]);
+    markRouteSource('map_long_press');
     const id = route.addStop(e.nativeEvent.coordinate);
     endSearch(true);
     toast(t('route.stopAdded'), t('route.undo'), () => route.removeStop(id));
@@ -225,6 +235,7 @@ export default function RouteScreen() {
 
   const pickResult = (r: PlaceResult) => {
     const p = { latitude: r.latitude, longitude: r.longitude };
+    markRouteSource('search');
     if (mode === 'start') {
       route.setStart(p, r.title);
       setSearchMode('stop');
@@ -288,6 +299,7 @@ export default function RouteScreen() {
 
   /** Start a saved ride straight from the list (works offline). */
   const startSaved = (r: SavedRide) => {
+    markRouteSource('saved_ride');
     route.loadRide(r);
     const points = r.stops.map(({ latitude, longitude, label }) => ({ latitude, longitude, label }));
     if (r.roundTrip && points.length >= 2) points.push({ ...points[0], label: t('route.backTo', { name: points[0].label }) });
@@ -703,12 +715,17 @@ export default function RouteScreen() {
         location={location}
         onClose={() => setShowIdeas(false)}
         onPreview={(ride, result) => {
+          track('suggested_ride_opened', { ride_id: ride.id, ride_name: ride.name, action: 'preview', distance_mi: roundMiles(result.distanceM) });
           const pts = routePoints(ride).map((pt, i) => ({ ...pt, label: labelFor(ride, i) }));
           setTrip({ title: ride.name, result: withBikeTime(result, bike), points: pts, profile: ride.profile, rideId: ride.id });
           setShowIdeas(false);
           setTimeout(() => router.push('/tour'), 350); // let the sheet close first
         }}
         onPick={(ride, result) => {
+          track('suggested_ride_opened', {
+            ride_id: ride.id, ride_name: ride.name, action: 'plan', distance_mi: result ? roundMiles(result.distanceM) : undefined,
+          });
+          markRouteSource('suggested_ride');
           const fromMe = shouldStartFromMe(location, ride.points[0], COVERAGE_BBOX);
           route.loadPlan({
             stops: ride.points.map(({ label, latitude, longitude }) => ({ label, latitude, longitude })),
@@ -732,6 +749,7 @@ export default function RouteScreen() {
         signedOut={auth.configured && !auth.session}
         onClose={() => setShowSaved(false)}
         onOpen={(r) => {
+          markRouteSource('saved_ride');
           route.loadRide(r);
           setShowSaved(false);
           setPanelOpen(true);

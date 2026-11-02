@@ -44,3 +44,32 @@ Builds made after Nov 1, 2026 include EAS Update. For JavaScript-only changes (m
 Riders get it the next time they open the app (it downloads in the background and applies on
 the following launch). Native changes (new packages, app.json permissions, icons) still need a
 new build + submit.
+
+## Usage stats (PostHog)
+
+The app sends anonymous usage events to PostHog (event list: `docs/analytics-events.md`).
+With no key set, analytics is switched off and the app works exactly the same.
+
+1. Give cloud builds the PostHog key and host, once for each environment (copy and paste
+   these four lines one at a time). The key starts with `phc_` and is a public key meant to
+   ship inside the app, so it's plaintext like the Supabase one:
+   ```
+   npx eas-cli@latest env:set --name EXPO_PUBLIC_POSTHOG_KEY --value phc_Ay4eAedYquC4UQWNtfbtUxgnaGdYWqrNAXem2CtUwRvf --environment preview --visibility plaintext
+   npx eas-cli@latest env:set --name EXPO_PUBLIC_POSTHOG_HOST --value https://us.i.posthog.com --environment preview --visibility plaintext
+   npx eas-cli@latest env:set --name EXPO_PUBLIC_POSTHOG_KEY --value phc_Ay4eAedYquC4UQWNtfbtUxgnaGdYWqrNAXem2CtUwRvf --environment production --visibility plaintext
+   npx eas-cli@latest env:set --name EXPO_PUBLIC_POSTHOG_HOST --value https://us.i.posthog.com --environment production --visibility plaintext
+   ```
+   (The host is PostHog US Cloud. If the project were ever moved to EU Cloud it would be
+   `https://eu.i.posthog.com`.) For running the app on your own computer, the same two
+   lines go in `.env.local` as `EXPO_PUBLIC_POSTHOG_KEY=...` and `EXPO_PUBLIC_POSTHOG_HOST=...`.
+2. **This needs a new build, not just an over-the-air update.** Adding PostHog also added
+   the `expo-application` native module, which the app store build has to include. Run the
+   build + submit commands above once; after that, changes to which events are sent can go
+   out as normal over-the-air updates.
+3. Riders can turn it off in More → "Share anonymous usage stats" (on by default).
+
+What is never sent: GPS points or coordinates, addresses, route lines, search text, or the
+rider's name or email. Signed-in riders are linked only by their account's random id. There
+is no session replay and no automatic tap recording, and PostHog's IP-to-location lookup is
+switched off. Sponsor reports should still come from Supabase (`partner_events`), which stays
+the official count; PostHog mirrors the same moments for exploring trends.

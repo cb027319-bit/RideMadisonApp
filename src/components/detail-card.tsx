@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { OfferPass } from '@/components/offer-pass';
+import { roundMiles, shareBucket, track } from '@/lib/analytics';
 import {
   BCYCLE_APP_ANDROID, BCYCLE_APP_ANDROID_WEB, BCYCLE_APP_IOS, BCYCLE_PRICING_URL, type BCycleStation,
 } from '@/lib/bcycle';
@@ -54,6 +55,21 @@ export function DetailCard({
   const name = title(selection);
   const partner = selection.type === 'partner' ? selection.item : undefined;
   const trailId = selection.type === 'trail' ? selection.item.id : null;
+
+  // Product analytics: a trail card or BCycle station opened (public places; no rider location).
+  const selKey = `${selection.type}:${selection.item.id}`;
+  useEffect(() => {
+    if (selection.type === 'trail') {
+      const tr = selection.item;
+      track('trail_card_viewed', {
+        trail_id: tr.id, trail_name: tr.name, trail_kind: tr.kind, length_mi: roundMiles(tr.lengthM),
+        unpaved_share: shareBucket(tr.unpavedShare), pass_needed: verdictFor(tr.rules) !== 'free',
+      });
+    } else if (selection.type === 'station') {
+      const st = selection.item;
+      track('bcycle_station_viewed', { station_id: st.id, station_name: st.name, bikes_available: st.bikes > 0 });
+    }
+  }, [selKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ad reporting: a partner card opened, or a sponsor line / trail partner shown on a trail.
   useEffect(() => {

@@ -2,6 +2,8 @@
 // Managed in Supabase (Table Editor → partners); sample partners appear only
 // in development builds when no real partners are live yet.
 
+import { track } from './analytics';
+import { sponsorEventName } from './analytics-core';
 import { cached } from './cache';
 import { t } from './i18n';
 import { ImpressionDedupe, newSessionKey, type PartnerEvent, type PartnerPlacement } from './partner-events';
@@ -98,6 +100,9 @@ export const DEMO_PARTNERS: Partner[] = [
   },
 ];
 
+/** Partners loaded this session, so analytics can name a partner known only by id (e.g. on an event). */
+const known = new Map<string, Partner>();
+
 export async function fetchPartners(force = false): Promise<Partner[]> {
   let live: Partner[] = [];
   if (supabase) {
@@ -115,6 +120,7 @@ export async function fetchPartners(force = false): Promise<Partner[]> {
     }
   }
   if (live.length === 0 && __DEV__) return DEMO_PARTNERS;
+  for (const p of live) known.set(p.id, p);
   return live;
 }
 
@@ -142,10 +148,19 @@ const sessionKey = newSessionKey();
  * record_partner_event database function, which sets the rider from the
  * session, checks the event kind and rate-limits repeats.
  */
-export function trackPartner(p: Partner, event: PartnerEvent, placement: PartnerPlacement = 'card') {
+export function trackPartner(
+  p: Partner, event: PartnerEvent, placement: PartnerPlacement = 'card', context?: { eventId?: string },
+) {
   if (p.demo || !supabase) return;
   if (!impressions.shouldSend(p.id, event, placement)) return;
   void supabase
     .rpc('record_partner_event', { p_partner: p.id, p_kind: event, p_placement: placement, p_session: sessionKey })
     .then(() => {}, () => {});
+  // Product analytics mirror: same moments and dedupe as the Supabase count above
+  // (which stays the official number for sponsor reports).
+  const info = p.name ? p : known.get(p.id);
+  const props = { partner_id: p.id, partner_name: info?.name, placement, tier: info?.tier, event_id: context?.eventId };
+  const name = sponsorEventName(event);
+  if (name === 'sponsored_listing_tap') track(name, { ...props, action: event as Exclude<PartnerEvent, 'impression' | 'offer'> });
+  else track(name, props);
 }

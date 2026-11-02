@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import "@/lib/bg-location";
 import { AuthSheet } from "@/components/auth-sheet";
 import { LaunchDoneContext, LaunchScreen } from "@/components/launch-screen";
+import { AnalyticsProvider } from "@/lib/analytics";
 import { AuthProvider } from "@/lib/auth";
 import { DataProvider } from "@/lib/data";
 import { LanguageProvider } from "@/lib/i18n";
@@ -73,44 +74,46 @@ function AppShell() {
       <ThemeProvider value={theme}>
         <PrefsProvider>
           <AuthProvider>
-            <DataProvider>
-              <RouteProvider>
-                <RideLogProvider>
-                  <TripProvider>
-                    <Stack>
-                      <Stack.Screen
-                        name="(tabs)"
-                        options={{ headerShown: false }}
+            <AnalyticsProvider>
+              <DataProvider>
+                <RouteProvider>
+                  <RideLogProvider>
+                    <TripProvider>
+                      <Stack>
+                        <Stack.Screen
+                          name="(tabs)"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="navigate"
+                          options={{
+                            headerShown: false,
+                            presentation: "fullScreenModal",
+                            gestureEnabled: false,
+                            animation: "fade",
+                          }}
+                        />
+                        <Stack.Screen
+                          name="tour"
+                          options={{
+                            headerShown: false,
+                            presentation: "fullScreenModal",
+                            animation: "fade",
+                          }}
+                        />
+                      </Stack>
+                      {!showLaunch && <AuthSheet />}
+                      <StatusBar
+                        style={showLaunch || c.dark ? "light" : "dark"}
                       />
-                      <Stack.Screen
-                        name="navigate"
-                        options={{
-                          headerShown: false,
-                          presentation: "fullScreenModal",
-                          gestureEnabled: false,
-                          animation: "fade",
-                        }}
-                      />
-                      <Stack.Screen
-                        name="tour"
-                        options={{
-                          headerShown: false,
-                          presentation: "fullScreenModal",
-                          animation: "fade",
-                        }}
-                      />
-                    </Stack>
-                    {!showLaunch && <AuthSheet />}
-                    <StatusBar
-                      style={showLaunch || c.dark ? "light" : "dark"}
-                    />
-                    {showLaunch && (
-                      <LaunchScreen onDone={() => setShowLaunch(false)} />
-                    )}
-                  </TripProvider>
-                </RideLogProvider>
-              </RouteProvider>
-            </DataProvider>
+                      {showLaunch && (
+                        <LaunchScreen onDone={() => setShowLaunch(false)} />
+                      )}
+                    </TripProvider>
+                  </RideLogProvider>
+                </RouteProvider>
+              </DataProvider>
+            </AnalyticsProvider>
           </AuthProvider>
         </PrefsProvider>
       </ThemeProvider>

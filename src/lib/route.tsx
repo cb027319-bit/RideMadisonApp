@@ -5,6 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { roundMiles, takeRouteSource, track } from './analytics';
 import { useAuth } from './auth';
 import { useData } from './data';
 import { profileFor, usePrefs } from './prefs';
@@ -552,6 +553,19 @@ export function RouteProvider({ children }: { children: ReactNode }) {
 
   const retry = useCallback(() => setRetryCount((n) => n + 1), []);
   const reloadSaved = useCallback(() => setSavedReload((n) => n + 1), []);
+  // Product analytics: a route planned from search, a trail card, an event or a suggested ride
+  // is ready. Distance is rounded; no points or route line are sent.
+  useEffect(() => {
+    if (status === 'error') takeRouteSource();
+    if (status !== 'ready' || !result) return;
+    const source = takeRouteSource();
+    if (!source) return;
+    track('route_started', {
+      distance_mi: roundMiles(result.distanceM), profile, bike_type: prefs?.bike, source,
+      stops: stops.length, round_trip: roundTrip,
+    });
+  }, [status, result]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const requestSearch = useCallback(() => setSearchRequest((n) => n + 1), []);
 
   // Times shown and handed to Navigate/Preview follow the rider's bike (e-bikes ~15 mph).

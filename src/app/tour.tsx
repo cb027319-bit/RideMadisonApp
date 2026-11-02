@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DirectionsSheet } from '@/components/directions-sheet';
 import { BikeMarker } from '@/components/maneuver-icon';
+import { roundMiles, track } from '@/lib/analytics';
 import { BRAND, FONT } from '@/lib/config';
 import { useData } from '@/lib/data';
 import { formatDistance } from '@/lib/geo';
@@ -54,6 +55,9 @@ export default function TourScreen() {
     const t = setTimeout(() => setIconReady(true), 1500);
     return () => clearTimeout(t);
   }, []);
+  useEffect(() => {
+    if (trip) track('flyover_preview_started', { distance_mi: roundMiles(trip.result.distanceM), profile: trip.profile, suggested_ride: !!trip.rideId });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [profileWidth, setProfileWidth] = useState(1);
   const [showDirections, setShowDirections] = useState(false);
   const maneuvers = useMemo(

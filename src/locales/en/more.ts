@@ -36,6 +36,8 @@ export const more = {
   'more.appearanceLight': 'Light',
   'more.appearanceDark': 'Dark',
   'more.appearanceHint': 'Automatic follows your phone’s light or dark setting',
+  'more.shareUsage': 'Share anonymous usage stats',
+  'more.shareUsageHint': 'Shows us which features riders use and lets us report totals to the local businesses that keep Ride Madison free. Never includes your location, routes, searches, name or email.',
   'more.guides': 'Rider guides',
   'more.guidePassTitle': 'Do I need a trail pass?',
   'more.guidePassBody': 'Wisconsin state trails such as the Military Ridge, Badger and Glacial Drumlin require a state trail pass to bike if you are 16 or older: $5 for a day or $25 for the year. On the Capital City State Trail the pass applies only to the 9 miles between Verona Rd and Nob Hill Rd. City paths like the Southwest Commuter Path are free. Walking never needs a pass. Tap any trail on the map to see its rules.',

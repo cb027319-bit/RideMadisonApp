@@ -13,6 +13,7 @@ import MapView, { AnimatedRegion, MarkerAnimated, Polyline } from 'react-native-
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BikeMarker, ManeuverIcon } from '@/components/maneuver-icon';
+import { pctBucket, roundMiles, roundMinutes, track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { startNavigationUpdates, stopNavigationUpdates } from '@/lib/bg-location';
 import { useRideLog } from '@/lib/ridelog';
@@ -143,6 +144,35 @@ export default function NavigateScreen() {
   const fixCount = useRef(0);
   const approached = useRef(false);
   const reached = useRef(new Set<number>());
+
+  // Product analytics: started / completed / abandoned (rounded distances, % complete; no GPS points).
+  const navEndProps = () => {
+    const planned = trip?.result.distanceM ?? 0;
+    const ridden = recorder.current.distanceM;
+    return {
+      distance_mi: roundMiles(planned),
+      ridden_mi: roundMiles(ridden),
+      pct_complete: arrivedRef.current ? 100 : pctBucket(planned ? ridden / planned : 0),
+      duration_min: roundMinutes((Date.now() - startedAt) / 1000),
+      profile: trip?.profile ?? 'unknown',
+      suggested_ride: !!trip?.rideId,
+      simulated: usedSim.current,
+    };
+  };
+  const navEndRef = useRef(navEndProps);
+  useEffect(() => {
+    navEndRef.current = navEndProps;
+  });
+  useEffect(() => {
+    if (!trip) return;
+    track('navigation_started', {
+      distance_mi: roundMiles(trip.result.distanceM), profile: trip.profile, bike_type: prefs?.bike, suggested_ride: !!trip.rideId,
+    });
+    // Leaving the screen before arriving (End ride, or Android back) counts as abandoned.
+    return () => {
+      if (!arrivedRef.current) track('navigation_abandoned', navEndRef.current());
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     navRef.current = nav;
   }, [nav]);
@@ -384,6 +414,7 @@ export default function NavigateScreen() {
   // On arrival: log the ride and show its stats plus any badge it earned.
   useEffect(() => {
     if (!arrived) return;
+    track('navigation_completed', navEndRef.current());
     const r = recorder.current;
     const t = setTimeout(() => {
       setSummary({ distanceM: r.distanceM, movingS: r.movingS });

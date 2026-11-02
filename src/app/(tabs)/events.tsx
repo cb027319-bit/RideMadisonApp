@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 
 import { EventForm } from '@/components/event-form';
+import { markRouteSource, track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import type { BCycleStation } from '@/lib/bcycle';
 import { cached } from '@/lib/cache';
@@ -32,7 +33,7 @@ const LARGE_TEXT = 1.3;
 
 /** Ad reporting for events with an advertising partner (placement 'events'; impressions count once per session). */
 function trackEvent(e: RideEvent, kind: PartnerEvent) {
-  if (e.partner_id) trackPartner({ id: e.partner_id } as Partner, kind, 'events');
+  if (e.partner_id) trackPartner({ id: e.partner_id } as Partner, kind, 'events', { eventId: e.id });
 }
 
 /** Stable (module-level) so the list never sees a new viewability callback. */
@@ -162,12 +163,15 @@ export default function EventsScreen() {
 
   const openEvent = (e: RideEvent) => {
     trackEvent(e, 'open');
+    track('event_viewed', { event_id: e.id, event_title: e.title, category: e.category, sponsored: !!e.partner_id });
     setOpen(e);
   };
 
   const rideThere = (e: RideEvent) => {
     if (e.latitude == null || e.longitude == null) return;
     trackEvent(e, 'route');
+    track('event_route_started', { event_id: e.id, event_title: e.title, category: e.category, sponsored: !!e.partner_id });
+    markRouteSource('event');
     routeTo({ latitude: e.latitude, longitude: e.longitude }, e.venue_name ?? e.title);
     setOpen(null);
     router.navigate('/route');
