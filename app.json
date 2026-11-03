@@ -58,7 +58,8 @@
         }
       ],
       "expo-sharing",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "./plugins/without-background-fetch.js"
     ],
     "experiments": {
       "reactCompiler": true
